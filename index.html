@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Unser Haushalt</title>
+<meta name="description" content="Einkauf, Ausgaben, Putzplan und Pinnwand für euren Haushalt">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Haushalt">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#EDF1EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1714" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one narrow app column, bottom tab bar, bottom sheets for every form. Kitchen-fridge palette: pine green + lemon note. */
+:root{
+  --bg:#EDF1EE; --surface:#FFFFFF; --surface-2:#E2E9E4; --ink:#13201B; --muted:#5A6A63; --line:#D3DCD6;
+  --accent:#1D6B57; --accent-ink:#FFFFFF; --accent-soft:#D5EAE1;
+  --lemon:#F4D35E; --lemon-ink:#3A2F00;
+  --danger:#B3423A; --danger-soft:#F6DEDB; --ok:#2C7A4C; --ok-soft:#DCEFE2; --warn:#9A6200; --warn-soft:#FBEBC6;
+  --p0:#1D6B57; --p1:#8A4FA3; --p2:#2F6FB5; --p3:#B3593A;
+  --shadow:0 10px 30px rgba(19,32,27,.14);
+  --f-display:"Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0F1714; --surface:#17221E; --surface-2:#1F2C27; --ink:#E6EEEA; --muted:#93A59D; --line:#2A3833;
+  --accent:#5CC2A2; --accent-ink:#0A1813; --accent-soft:#1C3830;
+  --lemon:#E8C547; --lemon-ink:#2A2200;
+  --danger:#EE8076; --danger-soft:#3A1F1C; --ok:#6FCF97; --ok-soft:#173527; --warn:#E7B04A; --warn-soft:#3A2E14;
+  --p0:#5CC2A2; --p1:#C79BE0; --p2:#7FB2EE; --p3:#E79A7B;
+  --shadow:0 10px 30px rgba(0,0,0,.45); color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0F1714; --surface:#17221E; --surface-2:#1F2C27; --ink:#E6EEEA; --muted:#93A59D; --line:#2A3833;
+  --accent:#5CC2A2; --accent-ink:#0A1813; --accent-soft:#1C3830;
+  --lemon:#E8C547; --lemon-ink:#2A2200;
+  --danger:#EE8076; --danger-soft:#3A1F1C; --ok:#6FCF97; --ok-soft:#173527; --warn:#E7B04A; --warn-soft:#3A2E14;
+  --p0:#5CC2A2; --p1:#C79BE0; --p2:#7FB2EE; --p3:#E79A7B;
+  --shadow:0 10px 30px rgba(0,0,0,.45); color-scheme:dark }
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;padding-top:env(safe-area-inset-top,0px);min-height:100vh;-webkit-tap-highlight-color:transparent}
+.inp,select.inp,textarea.inp{font-size:16px}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.num{font-variant-numeric:tabular-nums}
+
+/* Header */
+.top{padding-block:18px 8px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{min-width:0}
+.brand h1{font-family:var(--f-display);font-weight:700;font-size:26px;letter-spacing:-.01em;margin:0;line-height:1.1;text-wrap:balance;overflow-wrap:anywhere}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.mepill{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px 5px 5px;font-weight:600;font-size:14px;flex-shrink:0}
+.mepill small{color:var(--muted);font-weight:500}
+
+/* Avatars */
+.av{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;font-size:12px;font-weight:700;color:var(--bg);flex-shrink:0;font-family:var(--f-display)}
+.av.sm{width:20px;height:20px;font-size:10px}
+.p0{background:var(--p0)}.p1{background:var(--p1)}.p2{background:var(--p2)}.p3{background:var(--p3)}
+
+main{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+.view{display:flex;flex-direction:column;gap:14px;padding-block:8px}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:6px}
+.sec-h h2{font-family:var(--f-display);font-size:19px;margin:0;font-weight:700}
+.sec-h .meta{color:var(--muted);font-size:13px}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.pad{padding:14px 16px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:11px;padding:10px 14px;font-weight:600;background:var(--surface-2);color:var(--ink);min-height:42px}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.lemon{background:var(--lemon);color:var(--lemon-ink)}
+.btn.ghost{background:transparent;border:1px solid var(--line)}
+.btn.danger{background:var(--danger-soft);color:var(--danger)}
+.btn.sm{min-height:34px;padding:6px 11px;font-size:13px;border-radius:9px}
+.btn:disabled{opacity:.5;cursor:default}
+.iconbtn{border:0;background:transparent;color:var(--muted);width:34px;height:34px;border-radius:9px;display:grid;place-items:center;flex-shrink:0}
+.iconbtn:hover{background:var(--surface-2);color:var(--ink)}
+.iconbtn svg{width:18px;height:18px}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Inputs */
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label,.lbl{font-size:12px;font-weight:600;color:var(--muted)}
+.inp{width:100%;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;min-height:42px}
+textarea.inp{resize:vertical;min-height:110px}
+.inp:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:420px){.grid2{grid-template-columns:1fr}}
+
+/* Shopping */
+.addbar{display:flex;gap:8px}
+.addbar .inp{flex:1}
+.addbar .qty{flex:0 0 76px}
+.list{list-style:none;margin:0;padding:0}
+.item{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 12px;border-bottom:1px solid var(--line);min-height:52px}
+.item:last-child{border-bottom:0}
+.check{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);background:transparent;flex-shrink:0;display:grid;place-items:center;padding:0}
+.check svg{width:14px;height:14px;opacity:0}
+.item.done .check{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.item.done .check svg{opacity:1}
+.item .name{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:500}
+.item.done .name{text-decoration:line-through;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.chip.lemon{background:var(--lemon);color:var(--lemon-ink)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.bad{background:var(--danger-soft);color:var(--danger)}
+.chip.acc{background:var(--accent-soft);color:var(--accent)}
+.cartbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 14px;border-top:1px dashed var(--line)}
+
+/* Empty */
+.empty{padding:22px 16px;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:6px}
+.empty strong{color:var(--ink);font-family:var(--f-display);font-size:16px}
+
+/* Balance */
+.balance{background:var(--accent);color:var(--accent-ink);border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.balance .big{font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1.05}
+.balance .sub{opacity:.85;font-size:13px}
+.xfer{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.12);border-radius:12px;padding:8px 8px 8px 12px;flex-wrap:wrap}
+:root[data-theme="dark"] .xfer{background:rgba(0,0,0,.14)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .xfer{background:rgba(0,0,0,.14)}}
+.xfer .txt{flex:1;min-width:150px;font-weight:600}
+.xfer .btn{background:var(--accent-ink);color:var(--accent)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat{padding:12px 14px}
+.stat .v{font-family:var(--f-display);font-size:19px;font-weight:700;margin-top:2px}
+@media (max-width:460px){.stats{grid-template-columns:1fr 1fr}.stats .stat:last-child{grid-column:1/-1}}
+
+.exp{display:flex;align-items:center;gap:12px;padding:11px 12px;border-bottom:1px solid var(--line);width:100%;background:transparent;border-left:0;border-right:0;border-top:0;text-align:left}
+.list li:last-child .exp{border-bottom:0}
+.exp:hover{background:var(--surface-2)}
+.date{width:40px;text-align:center;flex-shrink:0;line-height:1.05}
+.date b{display:block;font-family:var(--f-display);font-size:18px}
+.date span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.exp .mid{flex:1;min-width:0}
+.exp .t{font-weight:600;overflow-wrap:anywhere}
+.exp .s{font-size:12.5px;color:var(--muted)}
+.exp .amt{text-align:right;flex-shrink:0}
+.exp .amt b{display:block}
+.exp .amt span{font-size:12px}
+.pos{color:var(--ok)} .neg{color:var(--danger)} .mut{color:var(--muted)}
+.month-h{padding:10px 12px 4px;display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+
+/* Chores */
+.chore{display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid var(--line)}
+.list li:last-child .chore{border-bottom:0}
+.chore .mid{flex:1;min-width:0}
+.chore .t{font-weight:600;overflow-wrap:anywhere}
+.chore .s{font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px}
+.stripe{width:4px;align-self:stretch;border-radius:4px;background:var(--line);flex-shrink:0}
+.stripe.bad{background:var(--danger)}.stripe.warn{background:var(--warn)}.stripe.ok{background:var(--ok)}
+.board{display:flex;gap:10px;flex-wrap:wrap}
+.board .who{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-weight:600}
+.board .who b{font-family:var(--f-display);font-size:18px}
+
+/* Notes */
+.notes{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.note{background:var(--lemon);color:var(--lemon-ink);border-radius:4px 14px 14px 14px;padding:12px 12px 8px;display:flex;flex-direction:column;gap:8px;min-width:0;box-shadow:0 1px 0 rgba(0,0,0,.06)}
+.note p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.note footer{display:flex;align-items:center;justify-content:space-between;font-size:12px;opacity:.8;gap:6px}
+.note .iconbtn{color:var(--lemon-ink);width:28px;height:28px}
+
+/* Nav */
+.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);z-index:20}
+.tabs .wrap{display:grid;grid-template-columns:repeat(4,1fr)}
+.tab{border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 4px 10px;color:var(--muted);font-size:12px;font-weight:600;position:relative}
+.tab svg{width:22px;height:22px}
+.tab[aria-current="page"]{color:var(--accent)}
+.tab[aria-current="page"]::before{content:"";position:absolute;top:0;left:28%;right:28%;height:3px;border-radius:0 0 3px 3px;background:var(--accent)}
+.tab .dot{position:absolute;top:6px;left:calc(50% + 8px);min-width:17px;height:17px;border-radius:9px;background:var(--danger);color:#fff;font-size:10px;display:grid;place-items:center;padding:0 4px}
+
+/* Sheet */
+.scrim{position:fixed;inset:0;background:rgba(10,18,15,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--bg);width:100%;max-width:560px;max-height:92%;overflow:auto;border-radius:20px 20px 0 0;box-shadow:var(--shadow);padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+@media (min-width:640px){.scrim{align-items:center}.sheet{border-radius:20px;max-height:86%}}
+.sheet h3{font-family:var(--f-display);font-size:21px;margin:0}
+.sheet .head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.seg{display:flex;background:var(--surface-2);border-radius:11px;padding:3px;gap:3px}
+.seg label{flex:1;text-align:center;padding:8px 6px;border-radius:9px;font-weight:600;font-size:13px;cursor:pointer;color:var(--muted)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg input:checked + span{color:var(--ink)}
+.seg label:has(input:checked){background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.splitrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.splitrow:last-child{border-bottom:0}
+.splitrow .n{flex:1;font-weight:600;min-width:0}
+.splitrow .inp{width:110px;flex:0 0 110px;text-align:right}
+.splitrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+.hint{font-size:13px;color:var(--muted)}
+.hint.bad{color:var(--danger)}
+.foot{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}
+.foot .right{display:flex;gap:10px;margin-left:auto}
+
+.subtabs button{flex:1;border:0;background:transparent;padding:8px 6px;border-radius:9px;font-weight:600;font-size:13px;color:var(--muted);min-width:0}
+.subtabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+/* Report */
+.monthnav{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.monthnav h2{font-family:var(--f-display);font-size:22px;margin:0;text-align:center;flex:1}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media (max-width:460px){.kpis{grid-template-columns:1fr 1fr}.kpis .stat:first-child{grid-column:1/-1}}
+.delta{font-size:12px;font-weight:600}
+.grp{padding:12px 14px;border-bottom:1px solid var(--line)}
+.grp:last-child{border-bottom:0}
+.grp-h{display:flex;justify-content:space-between;gap:10px;font-weight:700;margin-bottom:6px}
+.catrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:5px 0;font-size:14px}
+.catrow .bar{grid-column:1/-1;height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden}
+.catrow .bar i{display:block;height:100%;border-radius:3px;background:var(--accent)}
+.catrow .pct{color:var(--muted);font-size:12px;margin-left:6px}
+.trend{display:flex;align-items:flex-end;gap:8px;height:120px;padding-top:14px}
+.trend .col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%;min-width:0}
+.trend .b{width:100%;max-width:38px;border-radius:5px 5px 2px 2px;background:var(--accent-soft);display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}
+.trend .b i{display:block;background:var(--accent)}
+.trend .col.cur .b{outline:2px solid var(--accent);outline-offset:1px}
+.trend small{font-size:11px;color:var(--muted)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:var(--accent)}
+.legend span.v::before{background:var(--accent-soft)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:right;font-weight:700;padding:8px 14px 6px}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl td{padding:9px 14px;border-top:1px solid var(--line);text-align:right}
+/* Receipt review */
+.rc-drop{border:2px dashed var(--line);border-radius:16px;padding:26px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;color:var(--muted)}
+.rc-drop strong{color:var(--ink);font-family:var(--f-display);font-size:17px}
+.rc-item{display:grid;grid-template-columns:minmax(0,1fr) 96px 34px;gap:6px;padding:10px 0;border-bottom:1px solid var(--line)}
+.rc-item:last-child{border-bottom:0}
+.rc-item .inp{min-height:38px;padding:7px 10px}
+.rc-item .price{text-align:right}
+.rc-item .sub2{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:6px}
+.rc-item .sub2 select{font-size:13px}
+.rc-sum{display:flex;flex-direction:column;gap:4px;padding:12px 14px;background:var(--surface-2);border-radius:12px;font-size:14px}
+.rc-sum .ln{display:flex;justify-content:space-between;gap:10px}
+.rc-sum .ln b{font-family:var(--f-display);font-size:17px}
+.spin{width:28px;height:28px;border-radius:50%;border:3px solid var(--accent-soft);border-top-color:var(--accent);animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
+.banner{border-radius:12px;padding:10px 14px;font-size:14px;background:var(--warn-soft);color:var(--warn)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;z-index:60;max-width:calc(100% - 32px);box-shadow:var(--shadow)}
+body.ro .w{display:none!important}
+.hero-setup h2{font-family:var(--f-display);font-size:28px;margin:0 0 4px;text-wrap:balance}
+.whoami{display:flex;gap:10px;flex-wrap:wrap}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><h1 id="hh-name">Unser Haushalt</h1><p id="hh-sub">Einkauf, Ausgaben, Putzplan und Pinnwand</p></div>
+    <button class="mepill" id="me-pill" data-act="settings" hidden></button>
+  </header>
+</div>
+
+<main class="wrap">
+  <div id="status" class="banner" hidden></div>
+
+  <section id="noconfig" class="view" hidden>
+    <div class="card pad hero-setup"><span class="eyebrow">Einrichtung fehlt</span><h2>Die App ist noch nicht verbunden</h2>
+      <p class="hint">In der Datei <b>config.js</b> fehlen noch die Firebase-Zugangsdaten. Die Anleitung (README.md) zeigt in Schritt 1 bis 3, wo du sie findest.</p></div>
+  </section>
+
+  <section id="auth" class="view" hidden>
+    <div class="card pad hero-setup">
+      <span class="eyebrow">Unser Haushalt</span>
+      <h2 id="au-h">Anmelden</h2>
+      <p class="hint" id="au-p">Mit deiner E-Mail und deinem Passwort.</p>
+      <form id="auth-form" style="display:flex;flex-direction:column;gap:10px;margin-top:10px" novalidate>
+        <div class="field"><label for="au-email">E-Mail</label><input class="inp" id="au-email" type="email" autocomplete="email" autocapitalize="off" inputmode="email"></div>
+        <div class="field"><label for="au-pw">Passwort</label><input class="inp" id="au-pw" type="password" autocomplete="current-password"></div>
+        <button class="btn primary" type="submit" id="au-submit">Anmelden</button>
+        <div class="hint" id="au-msg"></div>
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <button type="button" class="btn ghost sm" data-act="au-toggle" id="au-toggle">Neues Konto erstellen</button>
+          <button type="button" class="btn ghost sm" data-act="au-reset">Passwort vergessen</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section id="verify" class="view" hidden>
+    <div class="card pad hero-setup">
+      <span class="eyebrow">Fast geschafft</span>
+      <h2>Bestätige deine E-Mail</h2>
+      <p class="hint">Wir haben eine E-Mail an <b id="vf-mail"></b> geschickt. Tippe auf den Link darin (schau auch im Spam-Ordner) und komm dann hierher zurück.</p>
+      <div class="row-actions" style="margin-top:12px">
+        <button class="btn primary" data-act="vf-check">Ich habe bestätigt</button>
+        <button class="btn ghost" data-act="vf-resend">Erneut senden</button>
+        <button class="btn ghost" data-act="logout">Abmelden</button>
+      </div>
+      <p class="hint" id="vf-msg"></p>
+    </div>
+  </section>
+
+  <section id="setup" class="view" hidden>
+    <div class="card pad hero-setup">
+      <span class="eyebrow">Einrichten</span>
+      <h2>Wer wohnt hier?</h2>
+      <p class="hint">Das macht nur eine Person. Trag die E-Mail der anderen Person ein, dann sieht sie den Haushalt, sobald sie sich mit dieser Adresse registriert.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+        <div class="field"><label for="su-name">Name des Haushalts</label><input class="inp" id="su-name" placeholder="z. B. Paul-Wagner-Straße 65"></div>
+        <div class="grid2">
+          <div class="field"><label for="su-m1">Dein Name</label><input class="inp" id="su-m1" autocomplete="given-name"></div>
+          <div class="field"><label for="su-m2">Name der zweiten Person</label><input class="inp" id="su-m2"></div>
+        </div>
+        <div class="field"><label for="su-mail2">E-Mail der zweiten Person</label><input class="inp" id="su-mail2" type="email" autocapitalize="off" inputmode="email" placeholder="name@beispiel.de"></div>
+        <button class="btn primary" data-act="setup-save">Haushalt anlegen</button>
+        <p class="hint" style="margin:0">Wurdest du schon eingeladen? Dann <button class="btn ghost sm" data-act="su-retry">erneut suchen</button> oder <button class="btn ghost sm" data-act="logout">abmelden</button> und mit der eingeladenen Adresse anmelden.</p>
+      </div>
+    </div>
+  </section>
+
+  <div id="who" class="card pad" hidden>
+    <span class="eyebrow">Auf diesem Gerät</span>
+    <p style="margin:4px 0 10px;font-weight:600">Wer bist du?</p>
+    <div class="whoami" id="who-btns"></div>
+  </div>
+
+  <!-- Einkauf -->
+  <section id="v-einkauf" class="view" hidden>
+    <form class="addbar w" id="add-form" autocomplete="off">
+      <input class="inp" id="add-name" placeholder="Was fehlt? z. B. Hafermilch" aria-label="Artikel">
+      <input class="inp qty" id="add-qty" placeholder="Menge" aria-label="Menge">
+      <button class="btn primary" type="submit" aria-label="Hinzufügen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    </form>
+    <div class="row-actions w">
+      <button class="btn ghost sm" data-act="upload"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Liste hochladen</button>
+    </div>
+    <div id="shop-list"></div>
+  </section>
+
+  <!-- Ausgaben -->
+  <section id="v-ausgaben" class="view" hidden>
+    <div class="seg subtabs" role="tablist" aria-label="Ausgaben">
+      <button role="tab" data-sub="list">Übersicht</button>
+      <button role="tab" data-sub="report">Monatsbericht</button>
+      <button role="tab" data-sub="rec">Daueraufträge</button>
+    </div>
+    <div id="sub-list" class="view" style="padding:0">
+      <div id="bal"></div>
+      <div id="stats"></div>
+      <div class="row-actions w">
+        <button class="btn primary" data-act="expense-new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Ausgabe eintragen</button>
+        <button class="btn lemon w" data-act="receipt" id="rc-btn" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>Kassenzettel scannen</button>
+        <button class="btn ghost" data-act="settle-new">Zahlung erfassen</button>
+      </div>
+      <div id="exp-list"></div>
+    </div>
+    <div id="sub-report" class="view" style="padding:0" hidden></div>
+    <div id="sub-rec" class="view" style="padding:0" hidden>
+      <div class="sec-h"><h2>Daueraufträge</h2><button class="btn primary sm w" data-act="rec-new">Dauerauftrag anlegen</button></div>
+      <p class="hint" style="margin:0">Feste Zahlungen wie Miete oder Strom werden an ihrem Tag automatisch als Ausgabe eingetragen und wie gewohnt aufgeteilt.</p>
+      <div id="rec-list"></div>
+    </div>
+  </section>
+
+  <!-- Putzplan -->
+  <section id="v-putzplan" class="view" hidden>
+    <div id="board"></div>
+    <div class="sec-h"><h2>Aufgaben</h2><button class="btn ghost sm w" data-act="chore-new">Aufgabe hinzufügen</button></div>
+    <div id="chore-list"></div>
+  </section>
+
+  <!-- Pinnwand -->
+  <section id="v-pinnwand" class="view" hidden>
+    <form class="card pad w" id="note-form" style="display:flex;flex-direction:column;gap:10px">
+      <label class="lbl" for="note-text">Neue Notiz</label>
+      <textarea class="inp" id="note-text" rows="3" style="min-height:80px" placeholder="z. B. Handwerker kommt Donnerstag zwischen 8 und 12 Uhr"></textarea>
+      <div style="display:flex;justify-content:flex-end"><button class="btn primary" type="submit">Anpinnen</button></div>
+    </form>
+    <div id="notes"></div>
+  </section>
+</main>
+
+<nav class="tabs" aria-label="Bereiche">
+  <div class="wrap">
+    <button class="tab" data-tab="einkauf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 10.2a2 2 0 0 0 2 1.6h7.3a2 2 0 0 0 2-1.5L20.5 8H6.2"/><circle cx="10" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></svg>Einkauf<span class="dot num" id="dot-shop" hidden></span></button>
+    <button class="tab" data-tab="ausgaben"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>Ausgaben</button>
+    <button class="tab" data-tab="putzplan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l2 2 3-3"/><path d="M12 7h8"/><path d="M4 13l2 2 3-3"/><path d="M12 14h8"/><path d="M12 20h8"/></svg>Putzplan<span class="dot num" id="dot-chore" hidden></span></button>
+    <button class="tab" data-tab="pinnwand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l-1 6 3 3H7l3-3z"/><path d="M12 12v9"/></svg>Pinnwand</button>
+  </div>
+</nav>
+
+<div id="scrim" class="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div id="toast" class="toast" hidden></div>
+
+<script type="module" src="app.js"></script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
+</body>
+</html>

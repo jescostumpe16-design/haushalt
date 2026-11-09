@@ -1,0 +1,41 @@
+rules_version = '2';
+
+// Nur Personen, deren bestätigte E-Mail im Haushalt eingetragen ist,
+// können den Haushalt und seine Listen lesen und ändern.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function verified() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+    function isMember(hid) {
+      return verified()
+        && myEmail() in get(/databases/$(database)/documents/households/$(hid)).data.emails;
+    }
+
+    match /households/{hid} {
+      allow read: if verified() && myEmail() in resource.data.emails;
+      allow create: if verified()
+        && request.resource.data.owner == request.auth.uid
+        && myEmail() in request.resource.data.emails
+        && request.resource.data.emails.size() <= 10;
+      // Mitglieder dürfen ändern, sich aber nicht selbst aussperren.
+      allow update: if verified()
+        && myEmail() in resource.data.emails
+        && myEmail() in request.resource.data.emails
+        && request.resource.data.owner == resource.data.owner
+        && request.resource.data.emails.size() <= 10;
+      allow delete: if verified() && resource.data.owner == request.auth.uid;
+
+      match /{list}/{item} {
+        allow read, write: if list in ['shopping', 'expenses', 'chores', 'notes', 'recurring']
+          && isMember(hid);
+      }
+    }
+  }
+}
