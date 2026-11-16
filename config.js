@@ -17,4 +17,4 @@ export const firebaseConfig = {
 // Adresse deines Scan-Servers (Cloudflare Worker), z. B.
 // "https://haushalt-scan.deinname.workers.dev"
 // Leer lassen, wenn du die Foto-Erkennung (Kassenzettel, Einkaufszettel) nicht nutzen willst.
-export const SCAN_URL = "";
+export const SCAN_URL = "https://haushalt-scan.jescostumpe16.workers.dev";
