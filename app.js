@@ -564,7 +564,7 @@ Wenn kein Kassenzettel zu sehen ist, antworte mit {"items":[]}.`;
     RC.busy=false;const c=e?.code;
     if(c==='cancelled')RC.error='';
     else if(c==='offline')RC.error='Ohne Internet geht das Scannen nicht. Du kannst die Positionen selbst eintippen.';
-    else if(c==='not_granted')RC.error='Der Scan-Dienst kennt deine E-Mail nicht. Prüfe ALLOWED_EMAILS beim Scan-Server (Anleitung Schritt 6).';
+    else if(c==='not_granted')RC.error=e.msg||'Der Scan-Server hat die Anfrage abgelehnt.';
     else if(c==='rate_limited')RC.error='Gerade zu viele Anfragen oder das API-Guthaben ist aufgebraucht. Versuch es später noch einmal.';
     else if(c==='image_rejected')RC.error='Dieses Bild kann ich nicht lesen. Nimm ein JPG oder PNG.';
     else if(c==='invalid_json')RC.error='Der Bon konnte nicht sauber ausgelesen werden. Versuch es noch einmal oder mit einem schärferen Foto.';
@@ -686,7 +686,7 @@ function uploadSheet(){
       }catch(e){
         const c=e?.code;h.className='hint bad';
         if(c==='offline')h.textContent='Ohne Internet geht die Fotoerkennung nicht. Tippe die Liste ein oder versuch es später.';
-        else if(c==='not_granted')h.textContent='Der Scan-Dienst kennt deine E-Mail nicht. Prüfe ALLOWED_EMAILS beim Scan-Server (Anleitung Schritt 6).';
+        else if(c==='not_granted')h.textContent=e.msg||'Der Scan-Server hat die Anfrage abgelehnt.';
         else if(c==='rate_limited')h.textContent='Gerade zu viele Anfragen. Versuch es in ein paar Minuten noch einmal.';
         else if(c==='image_rejected')h.textContent='Dieses Bild kann ich nicht lesen. Nimm ein JPG oder PNG.';
         else if(c==='cancelled')h.textContent='';
@@ -958,7 +958,15 @@ async function scanJSON(prompt,file,signal){
   let r;
   try{r=await fetch(SCAN_URL,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({prompt,image,mediaType:'image/jpeg'}),signal})}
   catch(e){throw {code:e?.name==='AbortError'?'cancelled':'upstream_error'}}
-  if(r.status===401||r.status===403)throw {code:'not_granted'};
+  if(r.status===401||r.status===403){
+    let why='';try{why=(await r.json()).error||''}catch(e){}
+    let hint;
+    if(r.status===403)hint=`Der Scan-Server kennt die E-Mail „${S.email}“ nicht. Sie muss genau so in ALLOWED_EMAILS stehen, danach in Cloudflare auf Deploy klicken.`;
+    else if(/Projekt|Aussteller/.test(why))hint='FIREBASE_PROJECT_ID in Cloudflare passt nicht zur projectId in config.js. Wert vergleichen, dann auf Deploy klicken.';
+    else if(/PROJECT_ID fehlt/.test(why))hint='In Cloudflare fehlt die Variable FIREBASE_PROJECT_ID oder sie ist noch nicht deployt.';
+    else hint='Die Anmeldung wurde nicht erkannt. Melde dich in der App ab und wieder an.';
+    throw {code:'not_granted',msg:hint+(why?` (Server: ${why})`:'')};
+  }
   if(r.status===429||r.status===402)throw {code:'rate_limited'};
   if(!r.ok)throw {code:'upstream_error'};
   const {text}=await r.json();
