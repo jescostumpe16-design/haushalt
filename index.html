@@ -209,6 +209,22 @@ textarea.inp{resize:vertical;min-height:110px}
 .subtabs button{flex:1;border:0;background:transparent;padding:8px 6px;border-radius:9px;font-weight:600;font-size:13px;color:var(--muted);min-width:0}
 .subtabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
 
+/* Gemeinschaftskonto */
+.av.joint{background:var(--ink);color:var(--bg)}
+.joint-note{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:var(--accent-soft);color:var(--ink);font-size:14px}
+
+/* Aufgaben */
+.task-opts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:end}
+@media (max-width:460px){.task-opts{grid-template-columns:1fr 1fr}.task-opts .btn{grid-column:1/-1}}
+.task{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 12px;border-bottom:1px solid var(--line);min-height:56px}
+.list li:last-child .task{border-bottom:0}
+.task .mid{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:0}
+.task .t{font-weight:600;overflow-wrap:anywhere;display:block}
+.task .s{font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px}
+.task.done .check{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.task.done .check svg{opacity:1}
+.task.done .t{text-decoration:line-through;color:var(--muted);font-weight:500}
+
 /* Report */
 .monthnav{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .monthnav h2{font-family:var(--f-display);font-size:22px;margin:0;text-align:center;flex:1}
@@ -378,12 +394,30 @@ body.ro .w{display:none!important}
 
   <!-- Pinnwand -->
   <section id="v-pinnwand" class="view" hidden>
-    <form class="card pad w" id="note-form" style="display:flex;flex-direction:column;gap:10px">
-      <label class="lbl" for="note-text">Neue Notiz</label>
-      <textarea class="inp" id="note-text" rows="3" style="min-height:80px" placeholder="z. B. Handwerker kommt Donnerstag zwischen 8 und 12 Uhr"></textarea>
-      <div style="display:flex;justify-content:flex-end"><button class="btn primary" type="submit">Anpinnen</button></div>
-    </form>
-    <div id="notes"></div>
+    <div class="seg subtabs" role="tablist" aria-label="Pinnwand">
+      <button role="tab" data-pin="info">Infos</button>
+      <button role="tab" data-pin="tasks">Aufgaben <span id="pin-count" class="num"></span></button>
+    </div>
+    <div id="pin-info" class="view" style="padding:0">
+      <form class="card pad w" id="note-form" style="display:flex;flex-direction:column;gap:10px">
+        <label class="lbl" for="note-text">Neue Info oder Ankündigung</label>
+        <textarea class="inp" id="note-text" rows="3" style="min-height:80px" placeholder="z. B. Handwerker kommt Donnerstag zwischen 8 und 12 Uhr"></textarea>
+        <div style="display:flex;justify-content:flex-end"><button class="btn primary" type="submit">Anpinnen</button></div>
+      </form>
+      <div id="notes"></div>
+    </div>
+    <div id="pin-tasks" class="view" style="padding:0" hidden>
+      <form class="card pad w" id="task-form" style="display:flex;flex-direction:column;gap:10px" autocomplete="off">
+        <label class="lbl" for="task-text">Neue Aufgabe</label>
+        <input class="inp" id="task-text" placeholder="z. B. Winterreifen wechseln, Paket abholen">
+        <div class="task-opts">
+          <div class="field"><label for="task-who">Wer?</label><select class="inp" id="task-who"></select></div>
+          <div class="field"><label for="task-due">Bis wann? (optional)</label><input class="inp" type="date" id="task-due"></div>
+          <button class="btn primary" type="submit">Hinzufügen</button>
+        </div>
+      </form>
+      <div id="tasks"></div>
+    </div>
   </section>
 </main>
 
@@ -392,7 +426,7 @@ body.ro .w{display:none!important}
     <button class="tab" data-tab="einkauf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 10.2a2 2 0 0 0 2 1.6h7.3a2 2 0 0 0 2-1.5L20.5 8H6.2"/><circle cx="10" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></svg>Einkauf<span class="dot num" id="dot-shop" hidden></span></button>
     <button class="tab" data-tab="ausgaben"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>Ausgaben</button>
     <button class="tab" data-tab="putzplan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l2 2 3-3"/><path d="M12 7h8"/><path d="M4 13l2 2 3-3"/><path d="M12 14h8"/><path d="M12 20h8"/></svg>Putzplan<span class="dot num" id="dot-chore" hidden></span></button>
-    <button class="tab" data-tab="pinnwand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l-1 6 3 3H7l3-3z"/><path d="M12 12v9"/></svg>Pinnwand</button>
+    <button class="tab" data-tab="pinnwand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l-1 6 3 3H7l3-3z"/><path d="M12 12v9"/></svg>Pinnwand<span class="dot num" id="dot-pin" hidden></span></button>
   </div>
 </nav>
 

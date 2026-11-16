@@ -1,6 +1,6 @@
 // Offline-Cache: Die App-Dateien liegen auf dem Handy, damit sie auch ohne Netz startet.
 // Nach einem Update hier die Versionsnummer erhöhen, dann holen sich die Handys die neue Version.
-const VERSION = 'haushalt-v1';
+const VERSION = 'haushalt-v3';
 const SHELL = [
   './', './index.html', './app.js', './config.js', './manifest.webmanifest',
   './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png'

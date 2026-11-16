@@ -39,14 +39,17 @@ function centsToInput(c){return (c/100).toFixed(2).replace('.',',')}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 
-const S={phase:'loading',authMode:'login',email:null,db:null,meta:null,metaReady:false,shopping:[],expenses:[],chores:[],notes:[],recurring:[],expSub:lsGet('hh-sub')||'list',repMonth:null,me:lsGet('hh-me'),uid:null,ro:false,sample:null,img:null,slow:false,fail:null,ready:{},view:null};
+const S={phase:'loading',authMode:'login',email:null,db:null,meta:null,metaReady:false,shopping:[],expenses:[],chores:[],notes:[],recurring:[],expSub:lsGet('hh-sub')||'list',pinSub:lsGet('hh-pin')||'info',showDone:false,repMonth:null,me:lsGet('hh-me'),uid:null,ro:false,sample:null,img:null,slow:false,fail:null,ready:{},view:null};
 
 const members=()=>S.meta?.members||[];
 const mIdx=id=>Math.max(0,members().findIndex(m=>m.id===id));
-const mName=id=>members().find(m=>m.id===id)?.name||'Jemand';
-const av=(id,sm)=>{const n=mName(id);return `<span class="av ${sm?'sm ':''}p${mIdx(id)%4}" title="${esc(n)}">${esc((n[0]||'?').toUpperCase())}</span>`};
+const JOINT='joint';
+const mName=id=>id===JOINT?'Gemeinschaftskonto':members().find(m=>m.id===id)?.name||'Jemand';
+const ICON_BANK='<svg viewBox="0 0 24 24" width="60%" height="60%" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6"/><path d="M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18"/></svg>';
+const av=(id,sm)=>{const n=mName(id);if(id===JOINT)return `<span class="av ${sm?'sm ':''}joint" title="${esc(n)}">${ICON_BANK}</span>`;return `<span class="av ${sm?'sm ':''}p${mIdx(id)%4}" title="${esc(n)}">${esc((n[0]||'?').toUpperCase())}</span>`};
+const defaultPayer=()=>{const l=lsGet('hh-lastpayer');return l===JOINT||members().some(m=>m.id===l)?l:(S.me||members()[0]?.id)};
 
-function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,3600)}
+function toast(msg,ms){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,ms||3600)}
 function failWrite(e){
   const c=e?.code;let m='Das hat nicht geklappt. Bitte noch einmal versuchen.';
   if(c==='permission-denied')m='Dafür fehlt die Berechtigung. Melde dich ab und wieder an.';
@@ -86,7 +89,7 @@ function render(){
   show(S.view||location.hash.slice(1));
   if(!hasMeta)return;
   $('#rc-btn').hidden=!S.img;
-  renderShop();renderExpenses();renderSub();renderChores();renderNotes();
+  renderShop();renderExpenses();renderSub();renderChores();renderPin();
 }
 
 function renderSub(){
@@ -101,7 +104,7 @@ function renderRec(){
   if(!rs.length){$('#rec-list').innerHTML=loadingOr('recurring',`<div class="card empty"><strong>Noch keine Daueraufträge</strong><span>Leg zum Beispiel die Miete an: Betrag, wer überweist, Tag im Monat und wie ihr sie aufteilt.</span><button class="btn primary w" data-act="rec-new" style="margin-top:6px">Miete anlegen</button></div>`);return}
   const monthly=rs.filter(r=>r.active!==false).reduce((s,r)=>s+(r.cents||0)/(r.every||1),0);
   $('#rec-list').innerHTML=`<div class="card"><ul class="list">${rs.map(r=>`<li><button class="exp" data-act="rec-edit" data-id="${r.id}">
-    <span class="mid"><span class="t">${esc(r.title)}</span><br><span class="s">${esc(r.category||'')} · ${REC_EVERY[r.every||1]} am ${r.day||1}. · ${esc(mName(r.payer))} überweist</span></span>
+    <span class="mid"><span class="t">${esc(r.title)}</span><br><span class="s">${esc(r.category||'')} · ${REC_EVERY[r.every||1]} am ${r.day||1}. · ${r.payer===JOINT?'vom Gemeinschaftskonto':esc(mName(r.payer))+' überweist'}</span></span>
     <span class="amt"><b class="num">${eur(r.cents)}</b>${r.active===false?'<span class="chip">pausiert</span>':`<span class="mut num">nächste: ${fmtDate(recNext(r)).replace(/ \d{4}$/,'')}</span>`}</span></button></li>`).join('')}</ul>
     <div class="cartbar"><span class="eyebrow">Fixkosten pro Monat</span><b class="num">${eur(Math.round(monthly))}</b></div></div>`;
 }
@@ -125,7 +128,9 @@ function renderReport(){
   const flat=g=>g.rows.map(c=>`<div class="catrow"><span>${esc(c)} <span class="pct num">${byCat[c].n}×</span></span><span class="num">${eur(byCat[c].c)}<span class="pct">${total?Math.round(byCat[c].c/total*100):0} %</span></span><span class="bar"><i style="width:${(byCat[c].c/max*100).toFixed(1)}%"></i></span></div>`).join('');
   // per person
   const ms=members();
-  const per=ms.map(m=>{const paid=ex.filter(e=>e.payer===m.id).reduce((s,e)=>s+e.cents,0);const share=ex.reduce((s,e)=>s+(e.shares?.[m.id]||0),0);return{m,paid,share,diff:paid-share}});
+  const per=ms.map(m=>{const paid=ex.filter(e=>e.payer===m.id).reduce((s,e)=>s+e.cents,0);const share=ex.reduce((s,e)=>s+(e.shares?.[m.id]||0),0);
+    const viaJoint=ex.filter(e=>e.payer===JOINT).reduce((s,e)=>s+(Object.fromEntries(paidBy(e))[m.id]||0),0);return{m,paid,share,diff:paid+viaJoint-share}});
+  const jointPaid=ex.filter(e=>e.payer===JOINT).reduce((s,e)=>s+e.cents,0);
   // 6-month trend
   const months=Array.from({length:6},(_,i)=>ymAdd(ym,i-5)).map(k=>({k,...monthData(k)}));
   const tmax=Math.max(1,...months.map(x=>x.total));
@@ -145,7 +150,9 @@ function renderReport(){
   <div class="sec-h"><h2>Wer hat was getragen</h2></div>
   <div class="card" style="overflow-x:auto"><table class="tbl num"><thead><tr><th>Person</th><th>Bezahlt</th><th>Anteil</th><th>Saldo</th></tr></thead><tbody>
     ${per.map(x=>`<tr><td>${av(x.m.id,true)} ${esc(x.m.name)}</td><td>${eur(x.paid)}</td><td>${eur(x.share)}</td><td class="${x.diff>0?'pos':x.diff<0?'neg':'mut'}">${x.diff>0?'+':''}${eur(x.diff)}</td></tr>`).join('')}
+    ${jointPaid?`<tr><td>${av(JOINT,true)} Gemeinschaftskonto</td><td>${eur(jointPaid)}</td><td class="mut">–</td><td class="mut">–</td></tr>`:''}
   </tbody></table></div>
+  ${jointPaid?`<p class="hint" style="margin:0">„Anteil“ enthält auch Ausgaben vom Gemeinschaftskonto. Im Saldo zählen sie für alle gleich und gleichen sich dadurch aus.</p>`:''}
   ${fixedList.length?`<div class="sec-h"><h2>Fixkosten im ${MONTHS_L[+ym.slice(5)-1]}</h2></div><div class="card"><ul class="list">${fixedList.map(e=>`<li><button class="exp" data-act="expense-edit" data-id="${e.id}"><span class="mid"><span class="t">${esc(e.title)}</span><br><span class="s">${esc(catOf(e))} · ${fmtDate(e.date)}</span></span><span class="amt"><b class="num">${eur(e.cents)}</b></span></button></li>`).join('')}</ul></div>`:''}`
   :`<div class="card empty"><strong>Keine Ausgaben im ${MONTHS_L[+ym.slice(5)-1]}</strong><span>Sobald ihr Ausgaben eintragt oder ein Dauerauftrag fällig wird, erscheint hier die Auswertung.</span></div>`}
   <div class="sec-h"><h2>Letzte 6 Monate</h2><span class="legend"><span>Fix</span><span class="v">Variabel</span></span></div>
@@ -174,9 +181,16 @@ function renderShop(){
   $('#shop-list').innerHTML=loadingOr('shopping',html);
 }
 
+/* Who funded an expense. The joint account counts as paid by all members in equal parts,
+   so a joint expense split equally nets to zero, and only items bought for one person create a debt. */
+function evenSplit(cents,ids){const k=ids.length,o={};ids.forEach((id,i)=>o[id]=Math.round(cents*(i+1)/k)-Math.round(cents*i/k));return o}
+function paidBy(e){
+  if(e.payer!==JOINT)return [[e.payer,e.cents||0]];
+  const ids=members().map(m=>m.id);return ids.length?Object.entries(evenSplit(e.cents||0,ids)):[];
+}
 function balances(){
   const b={};members().forEach(m=>b[m.id]=0);
-  for(const e of S.expenses){b[e.payer]=(b[e.payer]||0)+(e.cents||0);for(const[k,v]of Object.entries(e.shares||{}))b[k]=(b[k]||0)-v}
+  for(const e of S.expenses){paidBy(e).forEach(([k,v])=>b[k]=(b[k]||0)+v);for(const[k,v]of Object.entries(e.shares||{}))b[k]=(b[k]||0)-v}
   return b;
 }
 /* Minimum number of transfers: split people into as many groups as possible that
@@ -236,8 +250,10 @@ function renderExpenses(){
       let sub,impact='';
       if(e.kind==='payment'){const to=Object.keys(e.shares||{})[0];sub=`${esc(mName(e.payer))} hat ${esc(mName(to))} bezahlt`;
         if(S.me===e.payer)impact=`<span class="mut">von dir</span>`;else if(S.me===to)impact=`<span class="mut">an dich</span>`;}
-      else{sub=`${esc(mName(e.payer))} hat bezahlt · ${e.items?.length?`Bon mit ${e.items.length} Positionen`:esc(catOf(e))}${e.recId?' · Dauerauftrag':''}`;
-        if(S.me){const mine=e.shares?.[S.me]||0;const net=(e.payer===S.me?e.cents:0)-mine;
+      else{sub=`${e.payer===JOINT?'Vom Gemeinschaftskonto':esc(mName(e.payer))+' hat bezahlt'} · ${e.items?.length?`Bon mit ${e.items.length} Positionen`:esc(catOf(e))}${e.recId?' · Dauerauftrag':''}`;
+        const myNet=S.me?(Object.fromEntries(paidBy(e))[S.me]||0)-(e.shares?.[S.me]||0):0;
+        if(e.payer===JOINT&&!myNet)impact=`<span class="chip acc">gemeinsam</span>`;
+        else if(S.me){const net=myNet;
           impact=net>0?`<span class="pos num">du bekommst ${eur(net)}</span>`:net<0?`<span class="neg num">du schuldest ${eur(-net)}</span>`:`<span class="mut">nicht beteiligt</span>`;}}
       html+=`<li><button class="exp" data-act="${e.kind==='payment'?'settle-edit':'expense-edit'}" data-id="${e.id}">
         <span class="date"><b class="num">${+d[2]||''}</b><span>${d[1]?MONTHS[+d[1]-1]:''}</span></span>
@@ -278,9 +294,57 @@ function renderChores(){
     <button class="btn sm primary w" data-act="chore-done" data-id="${c.id}">Erledigt</button></div></li>`).join('')}</ul></div>`;
 }
 
+/* Pinnwand: Infos (as before) and one-off Aufgaben. Tasks live in the same "notes"
+   collection with kind:'task', so the existing database rules cover them. */
+const isTask=n=>n.kind==='task';
+function renderPin(){
+  const s=S.pinSub==='tasks'?'tasks':'info';
+  document.querySelectorAll('[data-pin]').forEach(b=>b.setAttribute('aria-selected',b.dataset.pin===s?'true':'false'));
+  $('#pin-info').hidden=s!=='info';$('#pin-tasks').hidden=s!=='tasks';
+  renderNotes();renderTasks();
+}
+function taskDue(t){
+  if(!t.due)return null;
+  const diff=dayNum(t.due)-dayNum(today());
+  if(diff<0)return{cls:'bad',label:`${-diff} ${-diff===1?'Tag':'Tage'} überfällig`};
+  if(diff===0)return{cls:'warn',label:'heute'};
+  if(diff===1)return{cls:'ok',label:'morgen'};
+  const [y,m,d]=t.due.split('-');return{cls:'',label:`bis ${+d}. ${MONTHS[+m-1]}${y!==today().slice(0,4)?' '+y:''}`};
+}
+function renderTasks(){
+  const all=S.notes.filter(isTask);
+  const open=all.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999')||(a.at||0)-(b.at||0));
+  const done=all.filter(t=>t.done).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0));
+  const urgent=open.filter(t=>{const d=taskDue(t);return (d&&(d.cls==='bad'||d.cls==='warn'))||(S.me&&t.who===S.me)}).length;
+  const dot=$('#dot-pin');dot.hidden=!urgent;dot.textContent=urgent;
+  $('#pin-count').textContent=open.length?`(${open.length})`:'';
+  const sel=$('#task-who');if(sel&&document.activeElement!==sel){const v=sel.value;sel.innerHTML=`<option value="">Beide / egal</option>`+memberOpts(v);sel.value=v||''}
+  const row=t=>{const d=taskDue(t);return `<li><div class="task ${t.done?'done':''}">
+    <button class="check w" data-act="task-toggle" data-id="${t.id}" aria-label="${t.done?'Wieder öffnen':'Erledigt'}">${ICON_CHECK}</button>
+    <button class="mid" data-act="task-edit" data-id="${t.id}"><span class="t">${esc(t.text)}</span>
+      <span class="s">${t.done?`erledigt${t.doneBy?' von '+esc(mName(t.doneBy)):''}`:`${d?`<span class="chip ${d.cls}">${d.label}</span>`:''}${t.who?`${av(t.who,true)}<span>${esc(mName(t.who))}</span>`:'<span>Beide</span>'}`}</span></button>
+  </div></li>`};
+  let html;
+  if(!all.length)html=`<div class="card empty"><strong>Keine offenen Aufgaben</strong><span>Für alles, was einmalig ansteht: Paket abholen, Glühbirne tauschen, Ablesetermin. Regelmäßiges gehört in den Putzplan.</span></div>`;
+  else html=`<div class="card">${open.length?`<ul class="list">${open.map(row).join('')}</ul>`:`<div class="empty"><span>Alles erledigt.</span></div>`}
+    ${done.length?`<div class="cartbar"><button class="btn ghost sm" data-act="task-showdone">${S.showDone?'Erledigte ausblenden':`Erledigt anzeigen (${done.length})`}</button>${S.showDone?`<button class="btn ghost sm w" data-act="task-clear">Erledigte löschen</button>`:''}</div>
+    ${S.showDone?`<ul class="list">${done.slice(0,30).map(row).join('')}</ul>`:''}`:''}</div>`;
+  $('#tasks').innerHTML=loadingOr('notes',html);
+}
+function taskSheet(t){
+  openSheet(`${sheetHead('Aufgabe bearbeiten')}
+  <div class="field"><label for="tk-text">Aufgabe</label><input class="inp" id="tk-text" value="${esc(t.text)}"></div>
+  <div class="grid2">
+    <div class="field"><label for="tk-who">Wer?</label><select class="inp" id="tk-who"><option value="">Beide / egal</option>${memberOpts(t.who)}</select></div>
+    <div class="field"><label for="tk-due">Bis wann?</label><input class="inp" type="date" id="tk-due" value="${esc(t.due||'')}"></div>
+  </div>
+  <p class="hint" style="margin:0">Angelegt von ${esc(mName(t.by))}${t.at?` am ${new Date(t.at).getDate()}. ${MONTHS[new Date(t.at).getMonth()]}`:''}.</p>
+  <div class="foot"><button class="btn danger w" data-act="task-del" data-id="${t.id}">Löschen</button><div class="right"><button class="btn ghost" data-act="close">Abbrechen</button><button class="btn primary w" data-act="task-save" data-id="${t.id}">Speichern</button></div></div>`);
+}
+
 function renderNotes(){
-  const ns=[...S.notes].sort((a,b)=>(b.at||0)-(a.at||0));
-  $('#notes').innerHTML=loadingOr('notes',ns.length?`<div class="notes">${ns.map(n=>{const d=new Date(n.at||0);return `<article class="note"><p>${esc(n.text)}</p><footer><span>${esc(mName(n.by))} · ${d.getDate()}. ${MONTHS[d.getMonth()]}</span><button class="iconbtn w" data-act="del-note" data-id="${n.id}" aria-label="Notiz entfernen">${ICON_X}</button></footer></article>`}).join('')}</div>`:`<div class="card empty"><strong>Nichts angepinnt</strong><span>Platz für Absprachen, Termine und Codes fürs WLAN.</span></div>`);
+  const ns=S.notes.filter(n=>!isTask(n)).sort((a,b)=>(b.at||0)-(a.at||0));
+  $('#notes').innerHTML=loadingOr('notes',ns.length?`<div class="notes">${ns.map(n=>{const d=new Date(n.at||0);return `<article class="note"><p>${esc(n.text)}</p><footer><span>${esc(mName(n.by))} · ${d.getDate()}. ${MONTHS[d.getMonth()]}</span><button class="iconbtn w" data-act="del-note" data-id="${n.id}" aria-label="Notiz entfernen">${ICON_X}</button></footer></article>`}).join('')}</div>`:`<div class="card empty"><strong>Nichts angepinnt</strong><span>Platz für Ankündigungen, Absprachen, Termine und Codes fürs WLAN.</span></div>`);
 }
 
 /* ---------- Sheets ---------- */
@@ -290,20 +354,21 @@ $('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')closeSheet()})
 addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#scrim').hidden)closeSheet()});
 const sheetHead=t=>`<div class="head"><h3>${t}</h3><button class="iconbtn" data-act="close" aria-label="Schließen">${ICON_X}</button></div>`;
 const memberOpts=sel=>members().map(m=>`<option value="${m.id}" ${m.id===sel?'selected':''}>${esc(m.name)}</option>`).join('');
+const payerOpts=sel=>memberOpts(sel)+`<option value="${JOINT}" ${sel===JOINT?'selected':''}>Gemeinschaftskonto</option>`;
 
 /* Expense */
 let EX=null;
 const fmtDate=s=>{const[y,m,d]=s.split('-');return `${+d}. ${MONTHS_L[+m-1]} ${y}`};
 function expenseSheet(e,prefill,rec){
   const ms=members();
-  EX={id:e?.id||null,mode:e?.mode||'equal',raw:e?.raw||{},rec:!!rec};
+  EX={id:e?.id||null,mode:e?.mode&&e.mode!==JOINT?e.mode:'equal',raw:e?.mode===JOINT?{}:(e?.raw||{}),rec:!!rec};
   const p=prefill||{};
   openSheet(`${sheetHead(rec?(e?'Dauerauftrag bearbeiten':'Neuer Dauerauftrag'):(e?'Ausgabe bearbeiten':'Neue Ausgabe'))}
   ${e?.recId&&!rec?`<p class="hint" style="margin:0">Automatisch eingetragen aus dem Dauerauftrag „${esc(S.recurring.find(r=>r.id===e.recId)?.title||e.title)}“. Änderungen gelten nur für diesen Monat.</p>`:''}
   <div class="field"><label for="ex-title">Wofür?</label><input class="inp" id="ex-title" value="${esc(e?.title||p.title||'')}" placeholder="${rec?'z. B. Miete':'z. B. Wocheneinkauf Rewe'}"></div>
   <div class="grid2">
     <div class="field"><label for="ex-amount">Betrag in €</label><input class="inp num" id="ex-amount" inputmode="decimal" value="${e?centsToInput(e.cents):''}" placeholder="0,00"></div>
-    <div class="field"><label for="ex-payer">Bezahlt von</label><select class="inp" id="ex-payer">${memberOpts(e?.payer||S.me||ms[0]?.id)}</select></div>
+    <div class="field"><label for="ex-payer">Bezahlt von</label><select class="inp" id="ex-payer">${payerOpts(e?.payer||defaultPayer())}</select></div>
     ${rec?`<div class="field"><label for="ex-every">Rhythmus</label><select class="inp" id="ex-every">${Object.entries(REC_EVERY).map(([k,l])=>`<option value="${k}" ${+k===(e?.every||1)?'selected':''}>${l}</option>`).join('')}</select></div>`
       :`<div class="field"><label for="ex-date">Datum</label><input class="inp" type="date" id="ex-date" value="${e?.date||today()}"></div>`}
     <div class="field"><label for="ex-cat">Kategorie</label>${catSelect('ex-cat',e?catOf(e):(p.category||(rec?'Miete':'Lebensmittel')))}</div>
@@ -312,15 +377,20 @@ function expenseSheet(e,prefill,rec){
   </div>
   ${rec?`<label class="splitrow" style="border:0;padding:0"><input type="checkbox" id="ex-active" ${e?.active===false?'':'checked'}><span class="n" style="font-weight:500">Aktiv, wird automatisch eingetragen</span></label>
   ${e?.bookedThrough?`<p class="hint" style="margin:0">Änderungen gelten ab der nächsten Buchung (${fmtDate(recNext(e))}). Bereits eingetragene Monate bleiben unverändert.</p>`:''}`:''}
+  <div class="joint-note" id="ex-jointnote" hidden>${av(JOINT)}<span>Vom Gemeinschaftskonto bezahlt. Die Ausgabe zählt im Monatsbericht, niemand schuldet dafür jemandem etwas.</span></div>
+  <div id="ex-splitwrap" style="display:flex;flex-direction:column;gap:14px">
   <div class="field"><span class="lbl">Aufteilen</span>
     <div class="seg" role="radiogroup">
       ${[['equal','Gleichmäßig'],['exact','Beträge'],['percent','Prozent']].map(([v,l])=>`<label><input type="radio" name="ex-mode" id="ex-mode-${v}" value="${v}" ${EX.mode===v?'checked':''}><span>${l}</span></label>`).join('')}
     </div></div>
   <div class="card pad" id="ex-split" style="padding-block:4px"></div>
   <div class="hint" id="ex-hint"></div>
+  </div>
   <div class="foot">${e?`<button class="btn danger" data-act="${rec?'rec-del':'ex-del'}">Löschen</button>`:''}<div class="right"><button class="btn ghost" data-act="close">Abbrechen</button><button class="btn primary w" data-act="ex-save">Speichern</button></div></div>`,
   root=>{root.querySelectorAll('[name=ex-mode]').forEach(r=>r.addEventListener('change',()=>{captureRaw();EX.mode=r.value;EX.raw={};renderSplit()}));
-    root.addEventListener('input',ev=>{if(ev.target.id==='ex-amount'||ev.target.id.startsWith('ex-s-'))splitHint()});renderSplit()});
+    root.addEventListener('input',ev=>{if(ev.target.id==='ex-amount'||ev.target.id.startsWith('ex-s-'))splitHint()});
+    const syncJoint=()=>{const j=$('#ex-payer').value===JOINT;$('#ex-splitwrap').hidden=j;$('#ex-jointnote').hidden=!j};
+    $('#ex-payer').addEventListener('change',syncJoint);syncJoint();renderSplit()});
 }
 function captureRaw(){members().forEach(m=>{const el=$('#ex-s-'+m.id);if(!el)return;EX.raw[m.id]=el.type==='checkbox'?el.checked:el.value})}
 function renderSplit(){
@@ -334,6 +404,7 @@ function renderSplit(){
 function computeShares(){
   const ms=members(),cents=parseEur($('#ex-amount').value);const shares={};
   if(!(cents>0))return{err:'Gib einen Betrag größer als 0 ein.'};
+  if($('#ex-payer')?.value===JOINT)return{cents,shares:evenSplit(cents,ms.map(m=>m.id)),joint:true};
   if(EX.mode==='equal'){const sel=ms.filter(m=>$('#ex-s-'+m.id)?.checked);if(!sel.length)return{err:'Wähle mindestens eine Person aus.'};
     const base=Math.floor(cents/sel.length);let rem=cents-base*sel.length;sel.forEach(m=>{shares[m.id]=base+(rem>0?1:0);if(rem>0)rem--});return{cents,shares}}
   if(EX.mode==='exact'){let sum=0;for(const m of ms){const v=$('#ex-s-'+m.id).value.trim();const c=v?parseEur(v):0;if(Number.isNaN(c))return{err:`Betrag für ${m.name} ist keine Zahl.`};if(c)shares[m.id]=c;sum+=c}
@@ -352,7 +423,8 @@ async function saveExpense(){
   const title=$('#ex-title').value.trim();if(!title){toast('Gib an, wofür das Geld war.');$('#ex-title').focus();return}
   const r=computeShares();if(r.err){toast(r.err);return}
   captureRaw();
-  const base={title,cents:r.cents,payer:$('#ex-payer').value,category:$('#ex-cat').value,mode:EX.mode,shares:r.shares,raw:EX.raw};
+  const payer=$('#ex-payer').value;if(!EX.id&&!EX.rec)lsSet('hh-lastpayer',payer);
+  const base={title,cents:r.cents,payer,category:$('#ex-cat').value,mode:r.joint?JOINT:EX.mode,shares:r.shares,raw:r.joint?{}:EX.raw};
   if(EX.rec){
     const old=S.recurring.find(x=>x.id===EX.id);
     const doc={...base,every:+$('#ex-every').value,day:+$('#ex-day').value,start:old?.bookedThrough?old.start:($('#ex-start').value||today().slice(0,7)),active:$('#ex-active').checked,bookedThrough:old?.bookedThrough||null,at:old?.at||Date.now()};
@@ -394,7 +466,7 @@ let RC=null;
 function receiptSheet(e){
   const ms=members();
   RC={id:e?.id||null,ctl:null,busy:false,error:'',
-    store:e?.title||'',date:e?.date||today(),payer:e?.payer||S.me||ms[0]?.id,bonTotal:e?.bonTotal??null,
+    store:e?.title||'',date:e?.date||today(),payer:e?.payer||defaultPayer(),bonTotal:e?.bonTotal??null,
     items:(e?.items||[]).map(x=>({...x})),parts:e?.raw?.parts||Object.fromEntries(ms.map(m=>[m.id,true]))};
   openSheet('',()=>rcRender());
 }
@@ -417,7 +489,7 @@ function rcRender(){
   <div class="grid2">
     <div class="field"><label for="rc-store">Geschäft</label><input class="inp" id="rc-store" value="${esc(RC.store)}" placeholder="z. B. Rewe"></div>
     <div class="field"><label for="rc-date">Datum</label><input class="inp" type="date" id="rc-date" value="${esc(RC.date)}"></div>
-    <div class="field"><label for="rc-payer">Bezahlt von</label><select class="inp" id="rc-payer">${memberOpts(RC.payer)}</select></div>
+    <div class="field"><label for="rc-payer">Bezahlt von</label><select class="inp" id="rc-payer">${payerOpts(RC.payer)}</select></div>
     <div class="field"><span class="lbl">Geteilt zwischen</span><div style="display:flex;gap:12px;flex-wrap:wrap;min-height:42px;align-items:center">${ms.map(m=>`<label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="rc-part-${m.id}" ${RC.parts[m.id]!==false?'checked':''} style="width:18px;height:18px;accent-color:var(--accent)">${esc(m.name)}</label>`).join('')}</div></div>
   </div>
   <div class="sec-h" style="margin:0"><h2 style="font-size:17px">Positionen <span class="mut num" style="font-size:14px">(${RC.items.length})</span></h2><button class="btn ghost sm" data-act="rc-add">Position hinzufügen</button></div>
@@ -446,7 +518,9 @@ function rcSync(){
   el.innerHTML=`<div class="ln"><span>Summe der Positionen</span><b class="num">${eur(sum)}</b></div>
     ${RC.bonTotal!=null&&RC.bonTotal!==sum?`<div class="ln ${Math.abs(RC.bonTotal-sum)>0?'neg':''}"><span>Summe laut Bon</span><span class="num">${eur(RC.bonTotal)} · Differenz ${eur(RC.bonTotal-sum)}</span></div>`:''}
     <div class="ln mut"><span>${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`${esc(c)} ${eur(v)}`).join(' · ')}</span></div>
-    <div class="ln ${r.err?'neg':''}"><span>${r.err?esc(r.err):Object.entries(r.shares).map(([k,v])=>`${esc(mName(k))} trägt ${eur(v)}`).join(' · ')}</span></div>`;
+    <div class="ln ${r.err?'neg':''}"><span>${r.err?esc(r.err):Object.entries(r.shares).map(([k,v])=>`${esc(mName(k))} trägt ${eur(v)}`).join(' · ')}</span></div>
+    ${RC.payer===JOINT&&!r.err?`<div class="ln mut"><span>${(()=>{const fake={payer:JOINT,cents:sum,shares:r.shares};const n=Object.fromEntries(paidBy(fake));const owe=members().map(m=>[m,(r.shares[m.id]||0)-(n[m.id]||0)]).filter(([,v])=>v>0);
+      return owe.length?'Vom Gemeinschaftskonto bezahlt. Für Artikel nur für eine Person entsteht ein Ausgleich: '+owe.map(([m,v])=>`${esc(m.name)} schuldet ${eur(v)}`).join(', ')+'.':'Vom Gemeinschaftskonto bezahlt. Niemand schuldet dafür jemandem etwas.'})()}</span></div>`:''}`;
 }
 function rcShares(){
   if(RC.items.some(it=>Number.isNaN(it.cents)))return{err:'Ein Preis ist keine Zahl.'};
@@ -503,6 +577,7 @@ async function rcSave(){
   const items=RC.items.filter(it=>it.name.trim()||it.cents);
   if(!items.length){toast('Füge mindestens eine Position hinzu.');return}
   const r=rcShares();if(r.err){toast(r.err);return}
+  if(!RC.id)lsSet('hh-lastpayer',RC.payer);
   const cents=items.reduce((s,it)=>s+it.cents,0);if(!(cents>0)){toast('Die Summe muss größer als 0 sein.');return}
   const byCat={};items.forEach(it=>byCat[it.category]=(byCat[it.category]||0)+it.cents);
   const main=Object.entries(byCat).sort((a,b)=>b[1]-a[1])[0][0];
@@ -651,6 +726,7 @@ function confirmTwice(btn,label){if(armed.get(btn)){armed.delete(btn);return tru
 document.addEventListener('click',async ev=>{
   const tab=ev.target.closest('[data-tab]');if(tab){location.hash=tab.dataset.tab;show(tab.dataset.tab);return}
   const sb=ev.target.closest('[data-sub]');if(sb){S.expSub=sb.dataset.sub;lsSet('hh-sub',S.expSub);renderSub();return}
+  const pb=ev.target.closest('[data-pin]');if(pb){S.pinSub=pb.dataset.pin;lsSet('hh-pin',S.pinSub);renderPin();return}
   const b=ev.target.closest('[data-act]');if(!b)return;const a=b.dataset.act,id=b.dataset.id;
   switch(a){
     case 'rep-prev':S.repMonth=ymAdd(S.repMonth||today().slice(0,7),-1);renderReport();break;
@@ -700,6 +776,13 @@ document.addEventListener('click',async ev=>{
     case 'ch-del':if(confirmTwice(b)&&await save(()=>S.db.doc('chores/'+id).delete())){closeSheet();toast('Aufgabe gelöscht')}break;
     case 'chore-done':choreDone(id);break;
     case 'del-note':if(confirmTwice(b,'?'))save(()=>S.db.doc('notes/'+id).delete());break;
+    case 'task-toggle':{const t=S.notes.find(x=>x.id===id);if(t)save(()=>S.db.doc('notes/'+id).update(t.done?{done:false,doneAt:null,doneBy:null}:{done:true,doneAt:Date.now(),doneBy:S.me||null}));break}
+    case 'task-edit':{const t=S.notes.find(x=>x.id===id);if(t)taskSheet(t);break}
+    case 'task-save':{const text=$('#tk-text').value.trim();if(!text){toast('Gib der Aufgabe einen Namen.');return}
+      if(await save(()=>S.db.doc('notes/'+id).update({text:text.slice(0,300),who:$('#tk-who').value||'',due:$('#tk-due').value||''}))){closeSheet();toast('Aufgabe gespeichert')}break}
+    case 'task-del':if(confirmTwice(b)&&await save(()=>S.db.doc('notes/'+id).delete())){closeSheet();toast('Aufgabe gelöscht')}break;
+    case 'task-showdone':S.showDone=!S.showDone;renderTasks();break;
+    case 'task-clear':{const d=S.notes.filter(n=>isTask(n)&&n.done);if(!confirmTwice(b,`${d.length} löschen?`))return;save(()=>Promise.all(d.map(n=>S.db.doc('notes/'+n.id).delete())));break}
     case 'se-save':{const ms=members().map(m=>({...m,name:$('#se-m-'+m.id).value.trim()||m.name}));const nn=$('#se-new')?.value.trim();
       if(nn){let k=ms.length+1;while(ms.some(m=>m.id==='m'+k))k++;ms.push({id:'m'+k,name:nn})}
       const me=$('#se-me').value;const nm=$('#se-mail').value.trim().toLowerCase();
@@ -714,6 +797,10 @@ $('#add-form').addEventListener('submit',async ev=>{ev.preventDefault();const n=
   const items=n.includes(',')&&!q?n.split(',').map(s=>s.trim()).filter(Boolean).map(x=>({name:x,qty:''})):[{name:n,qty:q}];addItems(items)});
 $('#note-form').addEventListener('submit',async ev=>{ev.preventDefault();const t=$('#note-text').value.trim();if(!t)return;
   if(await save(()=>S.db.collection('notes').add({text:t.slice(0,2000),by:S.me||null,at:Date.now()})))$('#note-text').value=''});
+$('#task-form').addEventListener('submit',async ev=>{ev.preventDefault();const t=$('#task-text').value.trim();if(!t){$('#task-text').focus();return}
+  const doc={kind:'task',text:t.slice(0,300),who:$('#task-who').value||'',due:$('#task-due').value||'',done:false,by:S.me||null,at:Date.now()};
+  $('#task-text').value='';$('#task-due').value='';$('#task-who').value='';
+  if(await save(()=>S.db.collection('notes').add(doc)))toast('Aufgabe hinzugefügt')});
 
 /* ---------- Firebase: Anmeldung, Haushalt, Speicher ---------- */
 const MAIL_RE=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -764,8 +851,24 @@ async function findHousehold(){
     const q=await getDocs(query(collection(fs,'households'),where('emails','array-contains',S.email)));
     if(!q.empty){const id=q.docs[0].id;lsSet('hh-id',id);startHousehold(id)}
     else{S.phase='setup';render();const n=$('#su-m1');if(n&&!n.value)n.focus()}
-  }catch(e){S.phase='setup';render();toast(e?.code==='unavailable'?'Keine Internetverbindung. Für die erste Anmeldung braucht die App Netz.':'Der Haushalt konnte nicht gesucht werden. Versuch es noch einmal.')}
+  }catch(e){S.phase='setup';render();toast('Suche nach deinem Haushalt: '+dbError(e),9000)}
 }
+/* Firestore errors in plain words, with the code so problems can be pinned down */
+function dbError(e){
+  const c=String(e?.code||e?.name||'unbekannt').replace(/^firestore\//,'');
+  const why={
+    'permission-denied':'Die Datenbank hat den Zugriff abgelehnt. Sind die Regeln aus firestore.rules in Firebase unter Firestore → Regeln veröffentlicht?',
+    'unauthenticated':'Du bist nicht mehr angemeldet. Melde dich ab und wieder an.',
+    'failed-precondition':'Die Firestore-Datenbank ist nicht eingerichtet. Lege sie in Firebase unter Firestore Database an (Standard-Edition, Datenbank-ID „(default)“).',
+    'not-found':'Die Firestore-Datenbank wurde nicht gefunden. Lege sie in Firebase unter Firestore Database an (Datenbank-ID „(default)“).',
+    'unavailable':'Die Datenbank ist nicht erreichbar. Prüfe die Internetverbindung.',
+    'deadline-exceeded':'Die Datenbank antwortet nicht. Prüfe die Internetverbindung.',
+    'timeout':'Die Datenbank antwortet nicht. Prüfe, ob die Firestore-Datenbank angelegt ist und das Handy Internet hat.',
+    'invalid-argument':'Die Daten wurden nicht angenommen.'
+  }[c]||'Unerwarteter Fehler.';
+  return why+' (Fehler: '+c+')';
+}
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej({code:'timeout'}),ms))]);
 async function createHousehold(btn){
   const n1=$('#su-m1').value.trim(),n2=$('#su-m2').value.trim(),m2=$('#su-mail2').value.trim().toLowerCase();
   if(!n1||!n2){toast('Gib beide Namen ein.');return}
@@ -773,10 +876,11 @@ async function createHousehold(btn){
   btn.disabled=true;
   const r=doc(collection(fs,'households'));
   try{
-    await setDoc(r,{name:$('#su-name').value.trim()||'Unser Haushalt',members:[{id:'m1',name:n1,uid:S.uid},{id:'m2',name:n2}],
-      emails:[S.email,...(m2&&m2!==S.email?[m2]:[])],owner:S.uid,created:Date.now()});
+    await auth.currentUser.getIdToken(true);
+    await withTimeout(setDoc(r,{name:$('#su-name').value.trim()||'Unser Haushalt',members:[{id:'m1',name:n1,uid:S.uid},{id:'m2',name:n2}],
+      emails:[S.email,...(m2&&m2!==S.email?[m2]:[])],owner:S.uid,created:Date.now()}),15000);
     lsSet('hh-id',r.id);lsSet('hh-me','m1');S.me='m1';location.hash='einkauf';startHousehold(r.id);
-  }catch(e){toast('Der Haushalt konnte nicht angelegt werden. Prüfe die Internetverbindung.')}
+  }catch(e){toast('Haushalt anlegen: '+dbError(e),12000)}
   finally{btn.disabled=false}
 }
 
