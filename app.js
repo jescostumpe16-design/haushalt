@@ -95,10 +95,11 @@ function render(){
 
 function renderSub(){
   if(S.expSub==='priv')S.expSub='mine';
-  const s=['list','report','rec','mine'].includes(S.expSub)?S.expSub:'list';
+  if(S.expSub==='rec')S.expSub='list';
+  const s=['list','report','mine'].includes(S.expSub)?S.expSub:'list';
   document.querySelectorAll('[data-sub]').forEach(b=>b.setAttribute('aria-selected',b.dataset.sub===s?'true':'false'));
-  $('#sub-list').hidden=s!=='list';$('#sub-report').hidden=s!=='report';$('#sub-rec').hidden=s!=='rec';$('#sub-mine').hidden=s!=='mine';
-  if(s==='report')renderReport();if(s==='rec')renderRec();if(s==='mine')renderMine();
+  $('#sub-list').hidden=s!=='list';$('#sub-report').hidden=s!=='report';$('#sub-mine').hidden=s!=='mine';
+  if(s==='report')renderReport();if(s==='mine')renderMine();
 }
 
 /* ---------- Meine Ausgaben ----------
@@ -153,6 +154,14 @@ function renderMine(){
   for(const k in byCat)if(byCat[k]<=0)delete byCat[k];
   const max=Math.max(1,...Object.values(byCat));
   const groups=CAT_GROUPS.map(([g,cs])=>{const rs=cs.filter(c=>byCat[c]).sort((a,b)=>byCat[b]-byCat[a]);return{g,rs,sum:rs.reduce((s,c)=>s+byCat[c],0)}}).filter(x=>x.rs.length);
+  const entries=rows.filter(r=>!r.e.recId);
+  const recRows=[];
+  if(f!=='priv'&&S.me)for(const r of S.recurring){const inst=S.expenses.find(e=>e.recId===r.id&&(e.date||'').startsWith(ym));
+    if(!inst&&ym!==cur)continue;const amt=(inst?inst.shares?.[S.me]:r.shares?.[S.me])||0;if(amt)recRows.push({p:false,r,inst,amt})}
+  if(f!=='shared')for(const r of S.privRec){const inst=S.priv.find(e=>e.recId===r.id&&(e.date||'').startsWith(ym));
+    if(!inst&&ym!==cur)continue;recRows.push({p:true,r,inst,amt:inst?inst.cents:r.cents})}
+  recRows.sort((a,b)=>(a.r.active===false)-(b.r.active===false)||b.amt-a.amt);
+  const fixMonthly=recRows.filter(x=>x.r.active!==false).reduce((s,x)=>s+((x.p?x.r.cents:(x.r.shares?.[S.me]||0))/(x.r.every||1)),0);
   const months=Array.from({length:6},(_,i)=>ymAdd(ym,i-5)).map(k=>{const rs=pick(myRows(k));return{k,t:sum(rs),p:sum(rs.filter(r=>r.kind==='priv'))}});
   const tmax=Math.max(1,...months.map(x=>x.t));
   const label={all:'Alle meine Ausgaben',shared:'Mein Anteil an gemeinsamen Ausgaben',priv:'Nur für mich'}[f];
@@ -162,10 +171,6 @@ function renderMine(){
   root.innerHTML=`
   <div class="seg subtabs" role="tablist" aria-label="Filter">${[['all','Alle meine'],['shared','Gemeinsam'],['priv',lockI+'Nur ich']].map(([k,l])=>`<button role="tab" data-mine="${k}" aria-selected="${k===f}">${l}</button>`).join('')}</div>
   ${warn}
-  <div class="row-actions w">
-    <button class="btn primary" data-act="mine-new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Ausgabe eintragen</button>
-    ${S.img?`<button class="btn lemon" data-act="mine-scan">Kassenzettel scannen</button>`:''}
-  </div>
   <div class="monthnav"><button class="iconbtn" data-act="mine-prev" aria-label="Vorheriger Monat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
     <h2>${ymLabel(ym)}</h2>
     <button class="iconbtn" data-act="mine-next" aria-label="Nächster Monat" ${ym>=cur?'disabled style="opacity:.3"':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>
@@ -174,29 +179,23 @@ function renderMine(){
   ${rows.length?`<div class="sec-h"><h2>Nach Kategorie</h2></div>
   <div class="card">${groups.map(g=>`<div class="grp"><div class="grp-h"><span>${g.g}</span><span class="num">${eur(g.sum)}</span></div>${g.rs.map(c=>`<div class="catrow"><span>${esc(c)}</span><span class="num">${eur(byCat[c])}<span class="pct">${total?Math.round(byCat[c]/total*100):0} %</span></span><span class="bar"><i style="width:${(byCat[c]/max*100).toFixed(1)}%"></i></span></div>`).join('')}</div>`).join('')}</div>
   <div class="sec-h"><h2>Einträge</h2></div>
-  <div class="card"><ul class="list">${rows.map(r=>{const e=r.e,d=(e.date||'--').split('-');
-    const sub=r.kind==='priv'?`${lockI}Nur ich · ${e.items?.length?`Bon mit ${e.items.length} ${e.items.length===1?"Position":"Positionen"}`:esc(catOf(e))}${e.recId?' · Dauerauftrag':''}${e.note?' · '+esc(e.note):''}`
-      :`Gemeinsam · dein Anteil von ${eur(e.cents)}${e.recId?' · Dauerauftrag':''}`;
+  ${entries.length?`<div class="card"><ul class="list">${entries.map(r=>{const e=r.e,d=(e.date||'--').split('-');
+    const sub=r.kind==='priv'?`${lockI}Nur ich · ${e.items?.length?`Bon mit ${e.items.length} ${e.items.length===1?"Position":"Positionen"}`:esc(catOf(e))}${e.note?' · '+esc(e.note):''}`
+      :`Gemeinsam · dein Anteil von ${eur(e.cents)}`;
     return `<li><button class="exp" data-act="${r.kind==='priv'?'mine-edit':'expense-edit'}" data-id="${e.id}">
     <span class="date"><b class="num">${+d[2]||''}</b><span>${d[1]?MONTHS[+d[1]-1]:''}</span></span>
     <span class="mid"><span class="t">${esc(e.title)}</span><br><span class="s">${sub}</span></span>
-    <span class="amt"><b class="num">${eur(r.amt)}</b></span></button></li>`}).join('')}</ul></div>`
-  :`<div class="card empty"><strong>Keine Einträge im ${MONTHS_L[+ym.slice(5)-1]}</strong><span>Gemeinsame Ausgaben erscheinen hier mit deinem Anteil, private Ausgaben mit dem vollen Betrag.</span></div>`}
+    <span class="amt"><b class="num">${eur(r.amt)}</b></span></button></li>`}).join('')}</ul></div>`:`<p class="hint" style="margin:0">Keine weiteren Einträge in diesem Monat.</p>`}`
+  :`<div class="card empty"><strong>Keine Einträge im ${MONTHS_L[+ym.slice(5)-1]}</strong><span>Gemeinsame Ausgaben erscheinen hier mit deinem Anteil, private mit dem vollen Betrag. Erfassen kannst du sie unter Übersicht.</span></div>`}
+  <div class="sec-h"><h2>Daueraufträge</h2>${recRows.length?`<span class="meta num">${eur(Math.round(fixMonthly))} pro Monat</span>`:''}</div>
+  ${recRows.length?`<div class="card"><ul class="list">${recRows.map(x=>{const r=x.r;
+    const st=x.inst?`gebucht am ${+x.inst.date.slice(8)}. ${MONTHS[+x.inst.date.slice(5,7)-1]}`:r.active===false?'pausiert':`nächste: ${fmtDate(recNext(r)).replace(/ \d{4}$/,'')}`;
+    return `<li><button class="exp" data-act="rec-edit" data-id="${r.id}" data-priv="${x.p?1:''}">
+    <span class="mid"><span class="t">${esc(r.title)}</span><br><span class="s">${x.p?lockI+'Nur ich':`Gemeinsam · dein Anteil von ${eur(r.cents)}`} · ${REC_EVERY[r.every||1]} am ${r.day||1}.</span></span>
+    <span class="amt"><b class="num">${eur(x.amt)}</b><span class="${x.inst?'pos':r.active===false?'mut':'mut'} num">${st}</span></span></button></li>`}).join('')}</ul></div>`
+  :`<p class="hint" style="margin:0">Keine Daueraufträge. Anlegen kannst du sie unter Übersicht.</p>`}
   <div class="sec-h"><h2>Letzte 6 Monate</h2>${f==='all'?`<span class="legend"><span>Nur ich</span><span class="v">Gemeinsam</span></span>`:''}</div>
   <div class="card pad"><div class="trend">${months.map(x=>`<div class="col ${x.k===ym?'cur':''}" title="${ymLabel(x.k)}: ${eur(x.t)}"><small class="num">${x.t?Math.round(x.t/100)+' €':''}</small><div class="b" style="height:${Math.max(x.t?3:0,x.t/tmax*82).toFixed(1)}%"><i style="height:${f==='shared'?0:f==='priv'?100:(x.t?(x.p/x.t*100).toFixed(1):0)}%"></i></div><small>${MONTHS[+x.k.slice(5)-1]}</small></div>`).join('')}</div></div>`;
-}
-
-function renderRec(){
-  const rs=[...S.recurring.map(r=>({...r,_p:false})),...S.privRec.map(r=>({...r,_p:true}))]
-    .sort((a,b)=>(a.active===false)-(b.active===false)||a._p-b._p||(b.cents||0)-(a.cents||0));
-  const warn=S.privRecErr==='permission-denied'?`<div class="banner">Private Daueraufträge sind noch gesperrt. Veröffentliche die aktuelle firestore.rules in Firebase.</div>`:'';
-  if(!rs.length){$('#rec-list').innerHTML=warn+loadingOr('recurring',`<div class="card empty"><strong>Noch keine Daueraufträge</strong><span>Leg zum Beispiel die Miete an: Betrag, wer überweist, Tag im Monat und wie ihr sie aufteilt. Hakst du nur dich an und zahlst selbst, ist der Dauerauftrag privat, etwa für Handy oder Fitnessstudio.</span><button class="btn primary w" data-act="rec-new" style="margin-top:6px">Dauerauftrag anlegen</button></div>`);return}
-  const per=r=>(r.cents||0)/(r.every||1);
-  const shared=rs.filter(r=>!r._p&&r.active!==false).reduce((s,r)=>s+per(r),0),priv=rs.filter(r=>r._p&&r.active!==false).reduce((s,r)=>s+per(r),0);
-  $('#rec-list').innerHTML=warn+`<div class="card"><ul class="list">${rs.map(r=>`<li><button class="exp" data-act="rec-edit" data-id="${r.id}" data-priv="${r._p?1:''}">
-    <span class="mid"><span class="t">${esc(r.title)}</span><br><span class="s">${r._p?lockI+'Nur ich · ':''}${esc(catOf(r))} · ${REC_EVERY[r.every||1]} am ${r.day||1}.${r._p?'':` · ${r.payer===JOINT?'vom Gemeinschaftskonto':esc(mName(r.payer))+' überweist'}`}</span></span>
-    <span class="amt"><b class="num">${eur(r.cents)}</b>${r.active===false?'<span class="chip">pausiert</span>':`<span class="mut num">nächste: ${fmtDate(recNext(r)).replace(/ \d{4}$/,'')}</span>`}</span></button></li>`).join('')}</ul>
-    <div class="cartbar"><span class="eyebrow">Fixkosten pro Monat</span><span class="num">gemeinsam <b>${eur(Math.round(shared))}</b>${S.privRec.length?` · ${lockI}privat <b>${eur(Math.round(priv))}</b>`:''}</span></div></div>`;
 }
 
 function monthData(ym){
@@ -549,7 +548,7 @@ async function savePrivExpense(title){
   else doc={...base,date:$('#ex-date').value||today(),...(old?.recId?{recId:old.recId}:{}),...(old?.note?{note:old.note}:{}),at:old?.at||Date.now()};
   await privWrite(coll,EX.origPriv?EX.id:null,doc);
   if(EX.id&&EX.origPriv===false)await save(()=>S.db.doc(coll+'/'+EX.id).delete());
-  closeSheet();toast(EX.rec?(EX.id?'Dauerauftrag gespeichert':'Privater Dauerauftrag angelegt'):(EX.id?'Gespeichert':'Private Ausgabe eingetragen'));
+  closeSheet();toast(EX.rec?(EX.id?'Dauerauftrag gespeichert':'Privater Dauerauftrag angelegt, zu sehen unter „Meine“'):(EX.id?'Gespeichert':'Nur für dich gespeichert, zu sehen unter „Meine“'));
 }
 async function deleteExpenseSheet(){
   const coll=EX.rec?'recurring':'expenses';
@@ -883,8 +882,6 @@ document.addEventListener('click',async ev=>{
   switch(a){
     case 'rep-prev':S.repMonth=ymAdd(S.repMonth||today().slice(0,7),-1);renderReport();break;
     case 'rep-next':{const n=ymAdd(S.repMonth||today().slice(0,7),1);if(n<=today().slice(0,7)){S.repMonth=n;renderReport()}break}
-    case 'mine-new':expenseSheet(null,null,false,S.mineFilter==='priv'||undefined);break;
-    case 'mine-scan':receiptSheet(null,S.mineFilter==='priv'||undefined);break;
     case 'mine-edit':{const e=S.priv.find(x=>x.id===id);if(!e)break;if(e.items?.length)receiptSheet(e,true);else expenseSheet(e,null,false,true);break}
     case 'mine-prev':S.mineMonth=ymAdd(S.mineMonth||today().slice(0,7),-1);renderMine();break;
     case 'mine-next':{const n=ymAdd(S.mineMonth||today().slice(0,7),1);if(n<=today().slice(0,7)){S.mineMonth=n;renderMine()}break}
@@ -988,7 +985,7 @@ function stopHousehold(){
 /* Private entries live outside the household: users/{uid}/expenses and users/{uid}/recurring */
 function startPrivate(){
   if(!S.uid)return;
-  const refresh=()=>{if(S.expSub==='mine')renderMine();if(S.expSub==='rec')renderRec()};
+  const refresh=()=>{if(S.expSub==='mine')renderMine()};
   unsubs.push(onSnapshot(collection(fs,'users',S.uid,'expenses'),{includeMetadataChanges:true},
     s=>{S.priv=s.docs.map(d=>({id:d.id,...d.data()}));S.privReady=true;S.privErr=null;refresh();if(!s.metadata.fromCache)bookPrivRecurring()},
     e=>{S.privErr=e?.code||'error';S.privReady=true;refresh()}));

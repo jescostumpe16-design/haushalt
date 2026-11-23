@@ -373,7 +373,6 @@ body.ro .w{display:none!important}
     <div class="seg subtabs" role="tablist" aria-label="Ausgaben">
       <button role="tab" data-sub="list">Übersicht</button>
       <button role="tab" data-sub="report">Bericht</button>
-      <button role="tab" data-sub="rec">Daueraufträge</button>
       <button role="tab" data-sub="mine">Meine</button>
     </div>
     <div id="sub-list" class="view" style="padding:0">
@@ -382,17 +381,13 @@ body.ro .w{display:none!important}
       <div class="row-actions w">
         <button class="btn primary" data-act="expense-new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Ausgabe eintragen</button>
         <button class="btn lemon w" data-act="receipt" id="rc-btn" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>Kassenzettel scannen</button>
+        <button class="btn ghost" data-act="rec-new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Dauerauftrag anlegen</button>
         <button class="btn ghost" data-act="settle-new">Zahlung erfassen</button>
       </div>
       <div id="exp-list"></div>
     </div>
     <div id="sub-report" class="view" style="padding:0" hidden></div>
     <div id="sub-mine" class="view" style="padding:0" hidden></div>
-    <div id="sub-rec" class="view" style="padding:0" hidden>
-      <div class="sec-h"><h2>Daueraufträge</h2><button class="btn primary sm w" data-act="rec-new">Dauerauftrag anlegen</button></div>
-      <p class="hint" style="margin:0">Feste Zahlungen wie Miete oder Strom werden an ihrem Tag automatisch als Ausgabe eingetragen. Hakst du nur dich an und zahlst selbst, ist der Dauerauftrag privat und nur für dich sichtbar.</p>
-      <div id="rec-list"></div>
-    </div>
   </section>
 
   <!-- Putzplan -->
