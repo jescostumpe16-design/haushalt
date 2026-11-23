@@ -1,13 +1,16 @@
 // Offline-Cache: Die App-Dateien liegen auf dem Handy, damit sie auch ohne Netz startet.
 // Nach einem Update hier die Versionsnummer erhöhen, dann holen sich die Handys die neue Version.
-const VERSION = 'haushalt-v4';
+const VERSION = 'haushalt-v6';
 const SHELL = [
   './', './index.html', './app.js', './config.js', './manifest.webmanifest',
   './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png'
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache:'reload' holt die Dateien garantiert frisch vom Server und nicht aus dem Browser-Zwischenspeicher.
+  e.waitUntil(caches.open(VERSION)
+    .then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -40,7 +43,7 @@ self.addEventListener('fetch', e => {
     // Sofort aus dem Cache antworten und im Hintergrund aktualisieren.
     e.respondWith(caches.open(VERSION).then(async c => {
       const hit = await c.match(req, { ignoreSearch: sameOrigin });
-      const net = fetch(req).then(res => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => hit);
+      const net = fetch(req, sameOrigin ? { cache: 'no-cache' } : {}).then(res => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => hit);
       return hit || net;
     }));
   }

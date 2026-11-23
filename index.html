@@ -206,7 +206,10 @@ textarea.inp{resize:vertical;min-height:110px}
 .foot{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}
 .foot .right{display:flex;gap:10px;margin-left:auto}
 
-.subtabs button{flex:1;border:0;background:transparent;padding:8px 6px;border-radius:9px;font-weight:600;font-size:13px;color:var(--muted);min-width:0}
+.subtabs button{flex:1;border:0;background:transparent;padding:8px 4px;border-radius:9px;font-weight:600;font-size:13px;color:var(--muted);min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
+.subtabs .lock{width:13px;height:13px;flex-shrink:0}
+.priv-badge{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.priv-badge svg{width:15px;height:15px;flex-shrink:0}
 .subtabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
 
 /* Gemeinschaftskonto */
@@ -364,8 +367,9 @@ body.ro .w{display:none!important}
   <section id="v-ausgaben" class="view" hidden>
     <div class="seg subtabs" role="tablist" aria-label="Ausgaben">
       <button role="tab" data-sub="list">Übersicht</button>
-      <button role="tab" data-sub="report">Monatsbericht</button>
+      <button role="tab" data-sub="report">Bericht</button>
       <button role="tab" data-sub="rec">Daueraufträge</button>
+      <button role="tab" data-sub="priv"><svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Privat</button>
     </div>
     <div id="sub-list" class="view" style="padding:0">
       <div id="bal"></div>
@@ -378,6 +382,7 @@ body.ro .w{display:none!important}
       <div id="exp-list"></div>
     </div>
     <div id="sub-report" class="view" style="padding:0" hidden></div>
+    <div id="sub-priv" class="view" style="padding:0" hidden></div>
     <div id="sub-rec" class="view" style="padding:0" hidden>
       <div class="sec-h"><h2>Daueraufträge</h2><button class="btn primary sm w" data-act="rec-new">Dauerauftrag anlegen</button></div>
       <p class="hint" style="margin:0">Feste Zahlungen wie Miete oder Strom werden an ihrem Tag automatisch als Ausgabe eingetragen und wie gewohnt aufgeteilt.</p>

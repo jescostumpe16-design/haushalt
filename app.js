@@ -39,7 +39,7 @@ function centsToInput(c){return (c/100).toFixed(2).replace('.',',')}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 
-const S={phase:'loading',authMode:'login',email:null,db:null,meta:null,metaReady:false,shopping:[],expenses:[],chores:[],notes:[],recurring:[],expSub:lsGet('hh-sub')||'list',pinSub:lsGet('hh-pin')||'info',showDone:false,repMonth:null,me:lsGet('hh-me'),uid:null,ro:false,sample:null,img:null,slow:false,fail:null,ready:{},view:null};
+const S={phase:'loading',authMode:'login',email:null,db:null,meta:null,metaReady:false,shopping:[],expenses:[],chores:[],notes:[],recurring:[],expSub:lsGet('hh-sub')||'list',pinSub:lsGet('hh-pin')||'info',showDone:false,priv:[],privReady:false,privErr:null,privMonth:null,repMonth:null,me:lsGet('hh-me'),uid:null,ro:false,sample:null,img:null,slow:false,fail:null,ready:{},view:null};
 
 const members=()=>S.meta?.members||[];
 const mIdx=id=>Math.max(0,members().findIndex(m=>m.id===id));
@@ -93,10 +93,68 @@ function render(){
 }
 
 function renderSub(){
-  const s=['list','report','rec'].includes(S.expSub)?S.expSub:'list';
+  const s=['list','report','rec','priv'].includes(S.expSub)?S.expSub:'list';
   document.querySelectorAll('[data-sub]').forEach(b=>b.setAttribute('aria-selected',b.dataset.sub===s?'true':'false'));
-  $('#sub-list').hidden=s!=='list';$('#sub-report').hidden=s!=='report';$('#sub-rec').hidden=s!=='rec';
-  if(s==='report')renderReport();if(s==='rec')renderRec();
+  $('#sub-list').hidden=s!=='list';$('#sub-report').hidden=s!=='report';$('#sub-rec').hidden=s!=='rec';$('#sub-priv').hidden=s!=='priv';
+  if(s==='report')renderReport();if(s==='rec')renderRec();if(s==='priv')renderPriv();
+}
+
+/* ---------- Private Ausgaben ----------
+   Stored under users/{uid}/expenses, outside the household. The database rules let only
+   the signed-in owner read or write that path, so the other household member never sees it. */
+const PRIV_CATS=['Lebensmittel & Snacks','Restaurant & Café','Kleidung','Gesundheit & Drogerie','Sport & Hobby','Freizeit & Ausflüge','Mobilität','Abos & Verträge','Bildung','Geschenke','Sonstiges'];
+const ICON_LOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+function renderPriv(){
+  const root=$('#sub-priv');
+  const others=S.me?members().filter(m=>m.id!==S.me).map(m=>m.name):[];
+  const badge=`<div class="priv-badge">${ICON_LOCK}<span>Nur für dich sichtbar. ${others.length===1?esc(others[0])+' sieht':'Niemand sonst im Haushalt sieht'} diese Ausgaben nicht.</span></div>`;
+  if(S.privErr){root.innerHTML=badge+`<div class="card empty"><strong>Private Ausgaben noch nicht freigeschaltet</strong><span>${S.privErr==='permission-denied'?'In Firebase fehlen noch die neuen Sicherheitsregeln. Veröffentliche die aktuelle firestore.rules unter Firestore Database → Regeln und öffne die App danach neu.':'Die privaten Ausgaben konnten nicht geladen werden. Öffne die App neu.'}</span></div>`;return}
+  if(!S.privReady){root.innerHTML=badge+`<div class="card empty"><span>Lädt …</span></div>`;return}
+  const cur=today().slice(0,7),ym=S.privMonth||cur;
+  const inM=k=>S.priv.filter(e=>(e.date||'').startsWith(k));
+  const ex=inM(ym).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.at||0)-(a.at||0));
+  const total=ex.reduce((s,e)=>s+(e.cents||0),0),prev=inM(ymAdd(ym,-1)).reduce((s,e)=>s+(e.cents||0),0);
+  const dPct=prev?Math.round((total-prev)/prev*100):null;
+  const byCat={};ex.forEach(e=>{const c=PRIV_CATS.includes(e.category)?e.category:'Sonstiges';byCat[c]=(byCat[c]||0)+e.cents});
+  const max=Math.max(1,...Object.values(byCat));
+  const months=Array.from({length:6},(_,i)=>ymAdd(ym,i-5)).map(k=>({k,t:inM(k).reduce((s,e)=>s+(e.cents||0),0)}));
+  const tmax=Math.max(1,...months.map(x=>x.t));
+  root.innerHTML=`${badge}
+  <div class="row-actions"><button class="btn primary" data-act="priv-new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Private Ausgabe eintragen</button></div>
+  <div class="monthnav"><button class="iconbtn" data-act="priv-prev" aria-label="Vorheriger Monat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <h2>${ymLabel(ym)}</h2>
+    <button class="iconbtn" data-act="priv-next" aria-label="Nächster Monat" ${ym>=cur?'disabled style="opacity:.3"':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>
+  <div class="card stat"><div class="eyebrow">Ausgegeben</div><div class="v num">${eur(total)}</div>
+    <div class="delta num mut">${ex.length} ${ex.length===1?'Eintrag':'Einträge'}${dPct==null?'':` · <span class="${dPct>0?'neg':dPct<0?'pos':'mut'}">${dPct>0?'+':''}${dPct} % ggü. Vormonat</span>`}</div></div>
+  ${ex.length?`<div class="sec-h"><h2>Nach Kategorie</h2></div>
+  <div class="card pad">${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div class="catrow"><span>${esc(c)}</span><span class="num">${eur(v)}<span class="pct">${total?Math.round(v/total*100):0} %</span></span><span class="bar"><i style="width:${(v/max*100).toFixed(1)}%"></i></span></div>`).join('')}</div>
+  <div class="sec-h"><h2>Einträge</h2></div>
+  <div class="card"><ul class="list">${ex.map(e=>{const d=(e.date||'--').split('-');return `<li><button class="exp" data-act="priv-edit" data-id="${e.id}">
+    <span class="date"><b class="num">${+d[2]||''}</b><span>${d[1]?MONTHS[+d[1]-1]:''}</span></span>
+    <span class="mid"><span class="t">${esc(e.title)}</span><br><span class="s">${esc(e.category||'Sonstiges')}${e.note?' · '+esc(e.note):''}</span></span>
+    <span class="amt"><b class="num">${eur(e.cents)}</b></span></button></li>`}).join('')}</ul></div>`
+  :`<div class="card empty"><strong>Keine privaten Ausgaben im ${MONTHS_L[+ym.slice(5)-1]}</strong><span>Trag hier ein, was du nur für dich ausgibst, z. B. Kleidung, Sport oder Abos.</span></div>`}
+  <div class="sec-h"><h2>Letzte 6 Monate</h2></div>
+  <div class="card pad"><div class="trend">${months.map(x=>`<div class="col ${x.k===ym?'cur':''}" title="${ymLabel(x.k)}: ${eur(x.t)}"><small class="num">${x.t?Math.round(x.t/100)+' €':''}</small><div class="b" style="height:${Math.max(x.t?3:0,x.t/tmax*82).toFixed(1)}%"><i style="height:100%"></i></div><small>${MONTHS[+x.k.slice(5)-1]}</small></div>`).join('')}</div></div>`;
+}
+function privSheet(e){
+  openSheet(`${sheetHead(e?'Private Ausgabe bearbeiten':'Private Ausgabe')}
+  <div class="priv-badge">${ICON_LOCK}<span>Nur für dich sichtbar.</span></div>
+  <div class="field"><label for="pv-title">Wofür?</label><input class="inp" id="pv-title" value="${esc(e?.title||'')}" placeholder="z. B. Laufschuhe"></div>
+  <div class="grid2">
+    <div class="field"><label for="pv-amount">Betrag in €</label><input class="inp num" id="pv-amount" inputmode="decimal" value="${e?centsToInput(e.cents):''}" placeholder="0,00"></div>
+    <div class="field"><label for="pv-date">Datum</label><input class="inp" type="date" id="pv-date" value="${e?.date||today()}"></div>
+  </div>
+  <div class="field"><label for="pv-cat">Kategorie</label><select class="inp" id="pv-cat">${PRIV_CATS.map(c=>`<option ${c===(e?.category||lsGet('hh-pvcat')||'Sonstiges')?'selected':''}>${c}</option>`).join('')}</select></div>
+  <div class="field"><label for="pv-note">Notiz (optional)</label><input class="inp" id="pv-note" value="${esc(e?.note||'')}"></div>
+  <div class="foot">${e?`<button class="btn danger" data-act="priv-del" data-id="${e.id}">Löschen</button>`:''}<div class="right"><button class="btn ghost" data-act="close">Abbrechen</button><button class="btn primary w" data-act="priv-save" data-id="${e?.id||''}">Speichern</button></div></div>`);
+}
+async function savePriv(id){
+  const title=$('#pv-title').value.trim();if(!title){toast('Gib an, wofür das Geld war.');$('#pv-title').focus();return}
+  const cents=parseEur($('#pv-amount').value);if(!(cents>0)){toast('Gib einen Betrag größer als 0 ein.');return}
+  const category=$('#pv-cat').value;if(!id)lsSet('hh-pvcat',category);
+  const doc={title:title.slice(0,120),cents,date:$('#pv-date').value||today(),category,note:$('#pv-note').value.trim().slice(0,200),at:S.priv.find(x=>x.id===id)?.at||Date.now()};
+  if(await privWrite(id,doc)){closeSheet();toast(id?'Gespeichert':'Private Ausgabe eingetragen')}
 }
 
 function renderRec(){
@@ -731,6 +789,12 @@ document.addEventListener('click',async ev=>{
   switch(a){
     case 'rep-prev':S.repMonth=ymAdd(S.repMonth||today().slice(0,7),-1);renderReport();break;
     case 'rep-next':{const n=ymAdd(S.repMonth||today().slice(0,7),1);if(n<=today().slice(0,7)){S.repMonth=n;renderReport()}break}
+    case 'priv-new':privSheet(null);break;
+    case 'priv-edit':{const e=S.priv.find(x=>x.id===id);if(e)privSheet(e);break}
+    case 'priv-save':savePriv(id);break;
+    case 'priv-del':if(confirmTwice(b)&&await privWrite(id,null)){closeSheet();toast('Gelöscht')}break;
+    case 'priv-prev':S.privMonth=ymAdd(S.privMonth||today().slice(0,7),-1);renderPriv();break;
+    case 'priv-next':{const n=ymAdd(S.privMonth||today().slice(0,7),1);if(n<=today().slice(0,7)){S.privMonth=n;renderPriv()}break}
     case 'rec-new':expenseSheet(null,null,true);break;
     case 'rec-edit':expenseSheet(S.recurring.find(x=>x.id===id),null,true);break;
     case 'rec-del':if(confirmTwice(b)&&await save(()=>S.db.doc('recurring/'+EX.id).delete())){closeSheet();toast('Dauerauftrag gelöscht. Bereits eingetragene Monate bleiben erhalten.')}break;
@@ -827,7 +891,23 @@ function makeDb(hid){
 
 function stopHousehold(){
   unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];
-  Object.assign(S,{db:null,meta:null,metaReady:false,shopping:[],expenses:[],chores:[],notes:[],recurring:[],ready:{},slow:false,fail:null});
+  Object.assign(S,{db:null,meta:null,metaReady:false,shopping:[],expenses:[],chores:[],notes:[],recurring:[],ready:{},slow:false,fail:null,priv:[],privReady:false,privErr:null});
+}
+/* Private expenses live outside the household: users/{uid}/expenses */
+function startPrivate(){
+  if(!S.uid)return;
+  const col=collection(fs,'users',S.uid,'expenses');
+  unsubs.push(onSnapshot(col,{includeMetadataChanges:true},
+    s=>{S.priv=s.docs.map(d=>({id:d.id,...d.data()}));S.privReady=true;S.privErr=null;if(S.expSub==='priv')renderPriv()},
+    e=>{S.privErr=e?.code||'error';S.privReady=true;if(S.expSub==='priv')renderPriv()}));
+}
+function privWrite(id,data){
+  if(!S.uid)return Promise.resolve(false);
+  const col=collection(fs,'users',S.uid,'expenses');
+  const r=id?doc(col,id):doc(col);
+  const p=data?setDoc(r,data):deleteDoc(r);
+  p.catch(e=>{if(e?.code==='permission-denied'){S.privErr='permission-denied';renderPriv()}failWrite(e)});
+  return Promise.resolve(true);
 }
 function startHousehold(hid){
   stopHousehold();S.phase='app';
@@ -841,6 +921,7 @@ function startHousehold(hid){
   for(const k of ['shopping','expenses','chores','notes','recurring'])unsubs.push(db.collection(k).onSnapshot(s=>{
     S[k]=s.docs.map(d=>({id:d.id,...d.data()}));S.ready[k]=true;render();
     if((k==='recurring'||k==='expenses')&&!s.metadata.fromCache)bookRecurring()},onErr));
+  startPrivate();
   render();
 }
 async function findHousehold(){
