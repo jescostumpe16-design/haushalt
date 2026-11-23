@@ -14,9 +14,10 @@ const MONTHS_L=['Januar','Februar','März','April','Mai','Juni','Juli','August',
 const CAT_GROUPS=[
   ['Wohnung',['Miete','Nebenkosten','Strom & Gas','Internet & Telefon','Rundfunkbeitrag','Versicherungen','Einrichtung & Reparaturen']],
   ['Haushalt',['Lebensmittel','Drogerie & Putzmittel']],
-  ['Alltag & Freizeit',['Restaurant & Lieferdienst','Freizeit & Ausflüge','Mobilität','Geschenke','Sonstiges']]];
+  ['Alltag & Freizeit',['Restaurant & Lieferdienst','Freizeit & Ausflüge','Mobilität','Geschenke','Sonstiges']],
+  ['Persönlich',['Kleidung','Gesundheit','Sport & Hobby','Abos & Verträge','Bildung']]];
 const CATS=CAT_GROUPS.flatMap(g=>g[1]);
-const LEGACY_CAT={'Haushalt':'Drogerie & Putzmittel','Miete & Nebenkosten':'Nebenkosten','Restaurant':'Restaurant & Lieferdienst','Freizeit':'Freizeit & Ausflüge','Transport':'Mobilität'};
+const LEGACY_CAT={'Lebensmittel & Snacks':'Lebensmittel','Restaurant & Café':'Restaurant & Lieferdienst','Gesundheit & Drogerie':'Gesundheit','Haushalt':'Drogerie & Putzmittel','Miete & Nebenkosten':'Nebenkosten','Restaurant':'Restaurant & Lieferdienst','Freizeit':'Freizeit & Ausflüge','Transport':'Mobilität'};
 const catOf=e=>LEGACY_CAT[e.category]||(CATS.includes(e.category)?e.category:'Sonstiges');
 const groupOf=c=>CAT_GROUPS.find(g=>g[1].includes(c))?.[0]||'Alltag & Freizeit';
 const catSelect=(id,sel)=>`<select class="inp" id="${id}">${CAT_GROUPS.map(([g,cs])=>`<optgroup label="${g}">${cs.map(c=>`<option ${c===sel?'selected':''}>${c}</option>`).join('')}</optgroup>`).join('')}</select>`;
@@ -39,7 +40,7 @@ function centsToInput(c){return (c/100).toFixed(2).replace('.',',')}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 
-const S={phase:'loading',authMode:'login',email:null,db:null,meta:null,metaReady:false,shopping:[],expenses:[],chores:[],notes:[],recurring:[],expSub:lsGet('hh-sub')||'list',pinSub:lsGet('hh-pin')||'info',showDone:false,priv:[],privReady:false,privErr:null,privMonth:null,repMonth:null,me:lsGet('hh-me'),uid:null,ro:false,sample:null,img:null,slow:false,fail:null,ready:{},view:null};
+const S={phase:'loading',authMode:'login',email:null,db:null,meta:null,metaReady:false,shopping:[],expenses:[],chores:[],notes:[],recurring:[],expSub:lsGet('hh-sub')||'list',pinSub:lsGet('hh-pin')||'info',showDone:false,priv:[],privReady:false,privErr:null,privRec:[],privRecReady:false,privRecErr:null,mineMonth:null,mineFilter:lsGet('hh-minef')||'all',repMonth:null,me:lsGet('hh-me'),uid:null,ro:false,sample:null,img:null,slow:false,fail:null,ready:{},view:null};
 
 const members=()=>S.meta?.members||[];
 const mIdx=id=>Math.max(0,members().findIndex(m=>m.id===id));
@@ -93,78 +94,109 @@ function render(){
 }
 
 function renderSub(){
-  const s=['list','report','rec','priv'].includes(S.expSub)?S.expSub:'list';
+  if(S.expSub==='priv')S.expSub='mine';
+  const s=['list','report','rec','mine'].includes(S.expSub)?S.expSub:'list';
   document.querySelectorAll('[data-sub]').forEach(b=>b.setAttribute('aria-selected',b.dataset.sub===s?'true':'false'));
-  $('#sub-list').hidden=s!=='list';$('#sub-report').hidden=s!=='report';$('#sub-rec').hidden=s!=='rec';$('#sub-priv').hidden=s!=='priv';
-  if(s==='report')renderReport();if(s==='rec')renderRec();if(s==='priv')renderPriv();
+  $('#sub-list').hidden=s!=='list';$('#sub-report').hidden=s!=='report';$('#sub-rec').hidden=s!=='rec';$('#sub-mine').hidden=s!=='mine';
+  if(s==='report')renderReport();if(s==='rec')renderRec();if(s==='mine')renderMine();
 }
 
-/* ---------- Private Ausgaben ----------
-   Stored under users/{uid}/expenses, outside the household. The database rules let only
-   the signed-in owner read or write that path, so the other household member never sees it. */
-const PRIV_CATS=['Lebensmittel & Snacks','Restaurant & Café','Kleidung','Gesundheit & Drogerie','Sport & Hobby','Freizeit & Ausflüge','Mobilität','Abos & Verträge','Bildung','Geschenke','Sonstiges'];
+/* ---------- Meine Ausgaben ----------
+   Private entries are stored under users/{uid}/expenses and users/{uid}/recurring, outside the
+   household. The database rules let only the signed-in owner read or write them, so the other
+   household member never sees them. Shared expenses are shown here with the viewer's share. */
 const ICON_LOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
-function renderPriv(){
-  const root=$('#sub-priv');
-  const others=S.me?members().filter(m=>m.id!==S.me).map(m=>m.name):[];
-  const badge=`<div class="priv-badge">${ICON_LOCK}<span>Nur für dich sichtbar. ${others.length===1?esc(others[0])+' sieht':'Niemand sonst im Haushalt sieht'} diese Ausgaben nicht.</span></div>`;
-  if(S.privErr){root.innerHTML=badge+`<div class="card empty"><strong>Private Ausgaben noch nicht freigeschaltet</strong><span>${S.privErr==='permission-denied'?'In Firebase fehlen noch die neuen Sicherheitsregeln. Veröffentliche die aktuelle firestore.rules unter Firestore Database → Regeln und öffne die App danach neu.':'Die privaten Ausgaben konnten nicht geladen werden. Öffne die App neu.'}</span></div>`;return}
-  if(!S.privReady){root.innerHTML=badge+`<div class="card empty"><span>Lädt …</span></div>`;return}
-  const cur=today().slice(0,7),ym=S.privMonth||cur;
-  const inM=k=>S.priv.filter(e=>(e.date||'').startsWith(k));
-  const ex=inM(ym).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.at||0)-(a.at||0));
-  const total=ex.reduce((s,e)=>s+(e.cents||0),0),prev=inM(ymAdd(ym,-1)).reduce((s,e)=>s+(e.cents||0),0);
-  const dPct=prev?Math.round((total-prev)/prev*100):null;
-  const byCat={};ex.forEach(e=>{const c=PRIV_CATS.includes(e.category)?e.category:'Sonstiges';byCat[c]=(byCat[c]||0)+e.cents});
+const lockI=`<span class="lock-i">${ICON_LOCK}</span>`;
+const otherNames=()=>{const o=S.me?members().filter(m=>m.id!==S.me).map(m=>m.name):[];return o.length===1?o[0]:'die anderen'};
+const scopeSeg=(name,priv)=>`<div class="seg scope" role="radiogroup" aria-label="Für wen?">
+  <label><input type="radio" name="${name}" value="shared" ${priv?'':'checked'}><span>Geteilt</span></label>
+  <label><input type="radio" name="${name}" value="priv" ${priv?'checked':''}><span>${lockI}Nur für mich</span></label></div>
+  <div class="priv-badge priv-only">${ICON_LOCK}<span>Nur für dich sichtbar. ${esc(otherNames())} sieht diesen Eintrag nicht.</span></div>`;
+const lastScopePriv=()=>lsGet('hh-scope')==='priv';
+function setScope(priv){$('#sheet').classList.toggle('is-priv',!!priv)}
+
+/* my share of a shared expense, split by category (items of a receipt keep their own category) */
+function myShareCats(e){
+  const amt=e.shares?.[S.me]||0,out={};if(!amt)return out;
+  if(Array.isArray(e.items)&&e.items.length){
+    const parts=members().filter(m=>e.raw?.parts?.[m.id]!==false).map(m=>m.id);
+    const raw={};let tot=0;
+    e.items.forEach(it=>{const c=it.cents||0;let v=0;
+      if(it.for===S.me)v=c;else if((!it.for||it.for==='all')&&parts.includes(S.me))v=c/parts.length;
+      if(v){const k=catOf(it);raw[k]=(raw[k]||0)+v;tot+=v}});
+    if(tot){let acc=0,big=null;for(const k in raw){out[k]=Math.round(raw[k]*amt/tot);acc+=out[k];if(!big||out[k]>out[big])big=k}if(big)out[big]+=amt-acc;return out}
+  }
+  out[catOf(e)]=amt;return out;
+}
+function privCats(e){
+  const out={};
+  if(Array.isArray(e.items)&&e.items.length)e.items.forEach(it=>{const k=catOf(it);out[k]=(out[k]||0)+(it.cents||0)});
+  else out[catOf(e)]=e.cents||0;
+  return out;
+}
+function myRows(ym){
+  const rows=[];
+  if(S.me)for(const e of S.expenses){if(e.kind==='payment'||!(e.date||'').startsWith(ym))continue;const amt=e.shares?.[S.me]||0;if(amt)rows.push({kind:'shared',e,amt,cats:myShareCats(e)})}
+  for(const e of S.priv){if(!(e.date||'').startsWith(ym))continue;rows.push({kind:'priv',e,amt:e.cents||0,cats:privCats(e)})}
+  return rows;
+}
+function renderMine(){
+  const root=$('#sub-mine');
+  const f=['all','shared','priv'].includes(S.mineFilter)?S.mineFilter:'all';
+  const cur=today().slice(0,7),ym=S.mineMonth||cur;
+  const pick=rows=>rows.filter(r=>f==='all'||r.kind===f);
+  const rows=pick(myRows(ym)).sort((a,b)=>(b.e.date||'').localeCompare(a.e.date||'')||(b.e.at||0)-(a.e.at||0));
+  const sum=rs=>rs.reduce((s,r)=>s+r.amt,0);
+  const total=sum(rows),sharedT=sum(rows.filter(r=>r.kind==='shared')),privT=sum(rows.filter(r=>r.kind==='priv'));
+  const prev=sum(pick(myRows(ymAdd(ym,-1))));const dPct=prev?Math.round((total-prev)/prev*100):null;
+  const byCat={};rows.forEach(r=>{for(const[k,v]of Object.entries(r.cats))byCat[k]=(byCat[k]||0)+v});
+  for(const k in byCat)if(byCat[k]<=0)delete byCat[k];
   const max=Math.max(1,...Object.values(byCat));
-  const months=Array.from({length:6},(_,i)=>ymAdd(ym,i-5)).map(k=>({k,t:inM(k).reduce((s,e)=>s+(e.cents||0),0)}));
+  const groups=CAT_GROUPS.map(([g,cs])=>{const rs=cs.filter(c=>byCat[c]).sort((a,b)=>byCat[b]-byCat[a]);return{g,rs,sum:rs.reduce((s,c)=>s+byCat[c],0)}}).filter(x=>x.rs.length);
+  const months=Array.from({length:6},(_,i)=>ymAdd(ym,i-5)).map(k=>{const rs=pick(myRows(k));return{k,t:sum(rs),p:sum(rs.filter(r=>r.kind==='priv'))}});
   const tmax=Math.max(1,...months.map(x=>x.t));
-  root.innerHTML=`${badge}
-  <div class="row-actions"><button class="btn primary" data-act="priv-new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Private Ausgabe eintragen</button></div>
-  <div class="monthnav"><button class="iconbtn" data-act="priv-prev" aria-label="Vorheriger Monat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-    <h2>${ymLabel(ym)}</h2>
-    <button class="iconbtn" data-act="priv-next" aria-label="Nächster Monat" ${ym>=cur?'disabled style="opacity:.3"':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>
-  <div class="card stat"><div class="eyebrow">Ausgegeben</div><div class="v num">${eur(total)}</div>
-    <div class="delta num mut">${ex.length} ${ex.length===1?'Eintrag':'Einträge'}${dPct==null?'':` · <span class="${dPct>0?'neg':dPct<0?'pos':'mut'}">${dPct>0?'+':''}${dPct} % ggü. Vormonat</span>`}</div></div>
-  ${ex.length?`<div class="sec-h"><h2>Nach Kategorie</h2></div>
-  <div class="card pad">${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div class="catrow"><span>${esc(c)}</span><span class="num">${eur(v)}<span class="pct">${total?Math.round(v/total*100):0} %</span></span><span class="bar"><i style="width:${(v/max*100).toFixed(1)}%"></i></span></div>`).join('')}</div>
-  <div class="sec-h"><h2>Einträge</h2></div>
-  <div class="card"><ul class="list">${ex.map(e=>{const d=(e.date||'--').split('-');return `<li><button class="exp" data-act="priv-edit" data-id="${e.id}">
-    <span class="date"><b class="num">${+d[2]||''}</b><span>${d[1]?MONTHS[+d[1]-1]:''}</span></span>
-    <span class="mid"><span class="t">${esc(e.title)}</span><br><span class="s">${esc(e.category||'Sonstiges')}${e.note?' · '+esc(e.note):''}</span></span>
-    <span class="amt"><b class="num">${eur(e.cents)}</b></span></button></li>`}).join('')}</ul></div>`
-  :`<div class="card empty"><strong>Keine privaten Ausgaben im ${MONTHS_L[+ym.slice(5)-1]}</strong><span>Trag hier ein, was du nur für dich ausgibst, z. B. Kleidung, Sport oder Abos.</span></div>`}
-  <div class="sec-h"><h2>Letzte 6 Monate</h2></div>
-  <div class="card pad"><div class="trend">${months.map(x=>`<div class="col ${x.k===ym?'cur':''}" title="${ymLabel(x.k)}: ${eur(x.t)}"><small class="num">${x.t?Math.round(x.t/100)+' €':''}</small><div class="b" style="height:${Math.max(x.t?3:0,x.t/tmax*82).toFixed(1)}%"><i style="height:100%"></i></div><small>${MONTHS[+x.k.slice(5)-1]}</small></div>`).join('')}</div></div>`;
-}
-function privSheet(e){
-  openSheet(`${sheetHead(e?'Private Ausgabe bearbeiten':'Private Ausgabe')}
-  <div class="priv-badge">${ICON_LOCK}<span>Nur für dich sichtbar.</span></div>
-  <div class="field"><label for="pv-title">Wofür?</label><input class="inp" id="pv-title" value="${esc(e?.title||'')}" placeholder="z. B. Laufschuhe"></div>
-  <div class="grid2">
-    <div class="field"><label for="pv-amount">Betrag in €</label><input class="inp num" id="pv-amount" inputmode="decimal" value="${e?centsToInput(e.cents):''}" placeholder="0,00"></div>
-    <div class="field"><label for="pv-date">Datum</label><input class="inp" type="date" id="pv-date" value="${e?.date||today()}"></div>
+  const label={all:'Meine Ausgaben',shared:'Mein Anteil gemeinsam',priv:'Nur privat'}[f];
+  let warn='';
+  if(S.privErr)warn=`<div class="banner">${S.privErr==='permission-denied'?'Private Einträge sind noch gesperrt. Veröffentliche die aktuelle firestore.rules in Firebase unter Firestore Database → Regeln.':'Private Einträge konnten nicht geladen werden. Öffne die App neu.'}</div>`;
+  else if(!S.me&&f!=='priv')warn=`<div class="banner">Tippe oben rechts auf „Wer bist du?“, damit die App deinen Anteil an den gemeinsamen Ausgaben kennt.</div>`;
+  root.innerHTML=`
+  <div class="seg subtabs" role="tablist" aria-label="Filter">${[['all','Alles'],['shared','Gemeinsam'],['priv',lockI+'Privat']].map(([k,l])=>`<button role="tab" data-mine="${k}" aria-selected="${k===f}">${l}</button>`).join('')}</div>
+  ${warn}
+  <div class="row-actions w">
+    <button class="btn primary" data-act="mine-new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Ausgabe eintragen</button>
+    ${S.img?`<button class="btn lemon" data-act="mine-scan">Kassenzettel scannen</button>`:''}
   </div>
-  <div class="field"><label for="pv-cat">Kategorie</label><select class="inp" id="pv-cat">${PRIV_CATS.map(c=>`<option ${c===(e?.category||lsGet('hh-pvcat')||'Sonstiges')?'selected':''}>${c}</option>`).join('')}</select></div>
-  <div class="field"><label for="pv-note">Notiz (optional)</label><input class="inp" id="pv-note" value="${esc(e?.note||'')}"></div>
-  <div class="foot">${e?`<button class="btn danger" data-act="priv-del" data-id="${e.id}">Löschen</button>`:''}<div class="right"><button class="btn ghost" data-act="close">Abbrechen</button><button class="btn primary w" data-act="priv-save" data-id="${e?.id||''}">Speichern</button></div></div>`);
-}
-async function savePriv(id){
-  const title=$('#pv-title').value.trim();if(!title){toast('Gib an, wofür das Geld war.');$('#pv-title').focus();return}
-  const cents=parseEur($('#pv-amount').value);if(!(cents>0)){toast('Gib einen Betrag größer als 0 ein.');return}
-  const category=$('#pv-cat').value;if(!id)lsSet('hh-pvcat',category);
-  const doc={title:title.slice(0,120),cents,date:$('#pv-date').value||today(),category,note:$('#pv-note').value.trim().slice(0,200),at:S.priv.find(x=>x.id===id)?.at||Date.now()};
-  if(await privWrite(id,doc)){closeSheet();toast(id?'Gespeichert':'Private Ausgabe eingetragen')}
+  <div class="monthnav"><button class="iconbtn" data-act="mine-prev" aria-label="Vorheriger Monat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <h2>${ymLabel(ym)}</h2>
+    <button class="iconbtn" data-act="mine-next" aria-label="Nächster Monat" ${ym>=cur?'disabled style="opacity:.3"':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>
+  <div class="balance"><span class="eyebrow" style="color:inherit;opacity:.8">${label}</span><div class="big num">${eur(total)}</div>
+    <div class="sub num">${f==='all'?`davon gemeinsamer Anteil ${eur(sharedT)} · privat ${eur(privT)}`:`${rows.length} ${rows.length===1?'Eintrag':'Einträge'}`}${dPct==null?'':` · ${dPct>0?'+':''}${dPct} % ggü. Vormonat`}</div></div>
+  ${rows.length?`<div class="sec-h"><h2>Nach Kategorie</h2></div>
+  <div class="card">${groups.map(g=>`<div class="grp"><div class="grp-h"><span>${g.g}</span><span class="num">${eur(g.sum)}</span></div>${g.rs.map(c=>`<div class="catrow"><span>${esc(c)}</span><span class="num">${eur(byCat[c])}<span class="pct">${total?Math.round(byCat[c]/total*100):0} %</span></span><span class="bar"><i style="width:${(byCat[c]/max*100).toFixed(1)}%"></i></span></div>`).join('')}</div>`).join('')}</div>
+  <div class="sec-h"><h2>Einträge</h2></div>
+  <div class="card"><ul class="list">${rows.map(r=>{const e=r.e,d=(e.date||'--').split('-');
+    const sub=r.kind==='priv'?`${lockI}Nur für mich · ${e.items?.length?`Bon mit ${e.items.length} Positionen`:esc(catOf(e))}${e.recId?' · Dauerauftrag':''}${e.note?' · '+esc(e.note):''}`
+      :`Gemeinsam · dein Anteil von ${eur(e.cents)}${e.recId?' · Dauerauftrag':''}`;
+    return `<li><button class="exp" data-act="${r.kind==='priv'?'mine-edit':'expense-edit'}" data-id="${e.id}">
+    <span class="date"><b class="num">${+d[2]||''}</b><span>${d[1]?MONTHS[+d[1]-1]:''}</span></span>
+    <span class="mid"><span class="t">${esc(e.title)}</span><br><span class="s">${sub}</span></span>
+    <span class="amt"><b class="num">${eur(r.amt)}</b></span></button></li>`}).join('')}</ul></div>`
+  :`<div class="card empty"><strong>Keine Einträge im ${MONTHS_L[+ym.slice(5)-1]}</strong><span>Gemeinsame Ausgaben erscheinen hier mit deinem Anteil, private Ausgaben mit dem vollen Betrag.</span></div>`}
+  <div class="sec-h"><h2>Letzte 6 Monate</h2>${f==='all'?`<span class="legend"><span>Privat</span><span class="v">Gemeinsam</span></span>`:''}</div>
+  <div class="card pad"><div class="trend">${months.map(x=>`<div class="col ${x.k===ym?'cur':''}" title="${ymLabel(x.k)}: ${eur(x.t)}"><small class="num">${x.t?Math.round(x.t/100)+' €':''}</small><div class="b" style="height:${Math.max(x.t?3:0,x.t/tmax*82).toFixed(1)}%"><i style="height:${f==='shared'?0:f==='priv'?100:(x.t?(x.p/x.t*100).toFixed(1):0)}%"></i></div><small>${MONTHS[+x.k.slice(5)-1]}</small></div>`).join('')}</div></div>`;
 }
 
 function renderRec(){
-  const rs=[...S.recurring].sort((a,b)=>(a.active===false)-(b.active===false)||(b.cents||0)-(a.cents||0));
-  if(!rs.length){$('#rec-list').innerHTML=loadingOr('recurring',`<div class="card empty"><strong>Noch keine Daueraufträge</strong><span>Leg zum Beispiel die Miete an: Betrag, wer überweist, Tag im Monat und wie ihr sie aufteilt.</span><button class="btn primary w" data-act="rec-new" style="margin-top:6px">Miete anlegen</button></div>`);return}
-  const monthly=rs.filter(r=>r.active!==false).reduce((s,r)=>s+(r.cents||0)/(r.every||1),0);
-  $('#rec-list').innerHTML=`<div class="card"><ul class="list">${rs.map(r=>`<li><button class="exp" data-act="rec-edit" data-id="${r.id}">
-    <span class="mid"><span class="t">${esc(r.title)}</span><br><span class="s">${esc(r.category||'')} · ${REC_EVERY[r.every||1]} am ${r.day||1}. · ${r.payer===JOINT?'vom Gemeinschaftskonto':esc(mName(r.payer))+' überweist'}</span></span>
+  const rs=[...S.recurring.map(r=>({...r,_p:false})),...S.privRec.map(r=>({...r,_p:true}))]
+    .sort((a,b)=>(a.active===false)-(b.active===false)||a._p-b._p||(b.cents||0)-(a.cents||0));
+  const warn=S.privRecErr==='permission-denied'?`<div class="banner">Private Daueraufträge sind noch gesperrt. Veröffentliche die aktuelle firestore.rules in Firebase.</div>`:'';
+  if(!rs.length){$('#rec-list').innerHTML=warn+loadingOr('recurring',`<div class="card empty"><strong>Noch keine Daueraufträge</strong><span>Leg zum Beispiel die Miete an: Betrag, wer überweist, Tag im Monat und wie ihr sie aufteilt. Mit „Nur für mich“ geht das auch für eigene Verträge, etwa Handy oder Fitnessstudio.</span><button class="btn primary w" data-act="rec-new" style="margin-top:6px">Dauerauftrag anlegen</button></div>`);return}
+  const per=r=>(r.cents||0)/(r.every||1);
+  const shared=rs.filter(r=>!r._p&&r.active!==false).reduce((s,r)=>s+per(r),0),priv=rs.filter(r=>r._p&&r.active!==false).reduce((s,r)=>s+per(r),0);
+  $('#rec-list').innerHTML=warn+`<div class="card"><ul class="list">${rs.map(r=>`<li><button class="exp" data-act="rec-edit" data-id="${r.id}" data-priv="${r._p?1:''}">
+    <span class="mid"><span class="t">${esc(r.title)}</span><br><span class="s">${r._p?lockI+'Nur für mich · ':''}${esc(catOf(r))} · ${REC_EVERY[r.every||1]} am ${r.day||1}.${r._p?'':` · ${r.payer===JOINT?'vom Gemeinschaftskonto':esc(mName(r.payer))+' überweist'}`}</span></span>
     <span class="amt"><b class="num">${eur(r.cents)}</b>${r.active===false?'<span class="chip">pausiert</span>':`<span class="mut num">nächste: ${fmtDate(recNext(r)).replace(/ \d{4}$/,'')}</span>`}</span></button></li>`).join('')}</ul>
-    <div class="cartbar"><span class="eyebrow">Fixkosten pro Monat</span><b class="num">${eur(Math.round(monthly))}</b></div></div>`;
+    <div class="cartbar"><span class="eyebrow">Fixkosten pro Monat</span><span class="num">gemeinsam <b>${eur(Math.round(shared))}</b>${S.privRec.length?` · ${lockI}privat <b>${eur(Math.round(priv))}</b>`:''}</span></div></div>`;
 }
 
 function monthData(ym){
@@ -406,7 +438,7 @@ function renderNotes(){
 }
 
 /* ---------- Sheets ---------- */
-function openSheet(html,onMount){$('#sheet').innerHTML=html;$('#scrim').hidden=false;onMount&&onMount($('#sheet'));const f=$('#sheet').querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),textarea');if(f&&matchMedia('(min-width:640px)').matches)f.focus()}
+function openSheet(html,onMount){$('#sheet').classList.remove('is-priv');$('#sheet').innerHTML=html;$('#scrim').hidden=false;onMount&&onMount($('#sheet'));const f=$('#sheet').querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),textarea');if(f&&matchMedia('(min-width:640px)').matches)f.focus()}
 function closeSheet(){if(RC?.busy)RC.ctl?.abort();RC=null;const s=$('#sheet');s.oninput=s.onchange=null;$('#scrim').hidden=true;s.innerHTML=''}
 $('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')closeSheet()});
 addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#scrim').hidden)closeSheet()});
@@ -417,16 +449,19 @@ const payerOpts=sel=>memberOpts(sel)+`<option value="${JOINT}" ${sel===JOINT?'se
 /* Expense */
 let EX=null;
 const fmtDate=s=>{const[y,m,d]=s.split('-');return `${+d}. ${MONTHS_L[+m-1]} ${y}`};
-function expenseSheet(e,prefill,rec){
+function expenseSheet(e,prefill,rec,priv){
   const ms=members();
-  EX={id:e?.id||null,mode:e?.mode&&e.mode!==JOINT?e.mode:'equal',raw:e?.mode===JOINT?{}:(e?.raw||{}),rec:!!rec};
+  const isPriv=e?!!priv:(priv??lastScopePriv());
+  EX={id:e?.id||null,mode:e?.mode&&e.mode!==JOINT?e.mode:'equal',raw:e?.mode===JOINT?{}:(e?.raw||{}),rec:!!rec,origPriv:e?!!priv:null,priv:isPriv};
   const p=prefill||{};
+  const recList=priv?S.privRec:S.recurring;
   openSheet(`${sheetHead(rec?(e?'Dauerauftrag bearbeiten':'Neuer Dauerauftrag'):(e?'Ausgabe bearbeiten':'Neue Ausgabe'))}
-  ${e?.recId&&!rec?`<p class="hint" style="margin:0">Automatisch eingetragen aus dem Dauerauftrag „${esc(S.recurring.find(r=>r.id===e.recId)?.title||e.title)}“. Änderungen gelten nur für diesen Monat.</p>`:''}
+  ${scopeSeg('ex-scope',isPriv)}
+  ${e?.recId&&!rec?`<p class="hint" style="margin:0">Automatisch eingetragen aus dem Dauerauftrag „${esc(recList.find(r=>r.id===e.recId)?.title||e.title)}“. Änderungen gelten nur für diesen Monat.</p>`:''}
   <div class="field"><label for="ex-title">Wofür?</label><input class="inp" id="ex-title" value="${esc(e?.title||p.title||'')}" placeholder="${rec?'z. B. Miete':'z. B. Wocheneinkauf Rewe'}"></div>
   <div class="grid2">
     <div class="field"><label for="ex-amount">Betrag in €</label><input class="inp num" id="ex-amount" inputmode="decimal" value="${e?centsToInput(e.cents):''}" placeholder="0,00"></div>
-    <div class="field"><label for="ex-payer">Bezahlt von</label><select class="inp" id="ex-payer">${payerOpts(e?.payer||defaultPayer())}</select></div>
+    <div class="field shared-only"><label for="ex-payer">Bezahlt von</label><select class="inp" id="ex-payer">${payerOpts(e?.payer||defaultPayer())}</select></div>
     ${rec?`<div class="field"><label for="ex-every">Rhythmus</label><select class="inp" id="ex-every">${Object.entries(REC_EVERY).map(([k,l])=>`<option value="${k}" ${+k===(e?.every||1)?'selected':''}>${l}</option>`).join('')}</select></div>`
       :`<div class="field"><label for="ex-date">Datum</label><input class="inp" type="date" id="ex-date" value="${e?.date||today()}"></div>`}
     <div class="field"><label for="ex-cat">Kategorie</label>${catSelect('ex-cat',e?catOf(e):(p.category||(rec?'Miete':'Lebensmittel')))}</div>
@@ -435,7 +470,7 @@ function expenseSheet(e,prefill,rec){
   </div>
   ${rec?`<label class="splitrow" style="border:0;padding:0"><input type="checkbox" id="ex-active" ${e?.active===false?'':'checked'}><span class="n" style="font-weight:500">Aktiv, wird automatisch eingetragen</span></label>
   ${e?.bookedThrough?`<p class="hint" style="margin:0">Änderungen gelten ab der nächsten Buchung (${fmtDate(recNext(e))}). Bereits eingetragene Monate bleiben unverändert.</p>`:''}`:''}
-  <div class="joint-note" id="ex-jointnote" hidden>${av(JOINT)}<span>Vom Gemeinschaftskonto bezahlt. Die Ausgabe zählt im Monatsbericht, niemand schuldet dafür jemandem etwas.</span></div>
+  <div class="shared-only"><div class="joint-note" id="ex-jointnote" hidden>${av(JOINT)}<span>Vom Gemeinschaftskonto bezahlt. Die Ausgabe zählt im Monatsbericht, niemand schuldet dafür jemandem etwas.</span></div>
   <div id="ex-splitwrap" style="display:flex;flex-direction:column;gap:14px">
   <div class="field"><span class="lbl">Aufteilen</span>
     <div class="seg" role="radiogroup">
@@ -443,12 +478,13 @@ function expenseSheet(e,prefill,rec){
     </div></div>
   <div class="card pad" id="ex-split" style="padding-block:4px"></div>
   <div class="hint" id="ex-hint"></div>
-  </div>
-  <div class="foot">${e?`<button class="btn danger" data-act="${rec?'rec-del':'ex-del'}">Löschen</button>`:''}<div class="right"><button class="btn ghost" data-act="close">Abbrechen</button><button class="btn primary w" data-act="ex-save">Speichern</button></div></div>`,
+  </div></div>
+  <div class="foot">${e?`<button class="btn danger" data-act="ex-del">Löschen</button>`:''}<div class="right"><button class="btn ghost" data-act="close">Abbrechen</button><button class="btn primary w" data-act="ex-save">Speichern</button></div></div>`,
   root=>{root.querySelectorAll('[name=ex-mode]').forEach(r=>r.addEventListener('change',()=>{captureRaw();EX.mode=r.value;EX.raw={};renderSplit()}));
     root.addEventListener('input',ev=>{if(ev.target.id==='ex-amount'||ev.target.id.startsWith('ex-s-'))splitHint()});
     const syncJoint=()=>{const j=$('#ex-payer').value===JOINT;$('#ex-splitwrap').hidden=j;$('#ex-jointnote').hidden=!j};
-    $('#ex-payer').addEventListener('change',syncJoint);syncJoint();renderSplit()});
+    $('#ex-payer').addEventListener('change',syncJoint);syncJoint();renderSplit();
+    setScope(isPriv);root.querySelectorAll('[name=ex-scope]').forEach(r=>r.addEventListener('change',()=>{EX.priv=r.value==='priv';setScope(EX.priv)}))});
 }
 function captureRaw(){members().forEach(m=>{const el=$('#ex-s-'+m.id);if(!el)return;EX.raw[m.id]=el.type==='checkbox'?el.checked:el.value})}
 function renderSplit(){
@@ -479,6 +515,8 @@ function splitHint(){
 }
 async function saveExpense(){
   const title=$('#ex-title').value.trim();if(!title){toast('Gib an, wofür das Geld war.');$('#ex-title').focus();return}
+  if(!EX.id)lsSet('hh-scope',EX.priv?'priv':'shared');
+  if(EX.priv)return savePrivExpense(title);
   const r=computeShares();if(r.err){toast(r.err);return}
   captureRaw();
   const payer=$('#ex-payer').value;if(!EX.id&&!EX.rec)lsSet('hh-lastpayer',payer);
@@ -486,16 +524,58 @@ async function saveExpense(){
   if(EX.rec){
     const old=S.recurring.find(x=>x.id===EX.id);
     const doc={...base,every:+$('#ex-every').value,day:+$('#ex-day').value,start:old?.bookedThrough?old.start:($('#ex-start').value||today().slice(0,7)),active:$('#ex-active').checked,bookedThrough:old?.bookedThrough||null,at:old?.at||Date.now()};
-    const col=S.db.collection('recurring');
-    const ok=await save(()=>EX.id?col.doc(EX.id).set(doc):col.add(doc));
-    if(ok){closeSheet();toast(EX.id?'Dauerauftrag gespeichert':'Dauerauftrag angelegt')}
+    const col=S.db.collection('recurring');const keep=EX.id&&!EX.origPriv;
+    const ok=await save(()=>keep?col.doc(EX.id).set(doc):col.add(doc));
+    if(ok){if(EX.id&&EX.origPriv)privWrite('recurring',EX.id,null);closeSheet();toast(EX.id?'Dauerauftrag gespeichert':'Dauerauftrag angelegt')}
     return;
   }
+  if(EX.id&&EX.origPriv){const ok=await save(()=>S.db.collection('expenses').add({kind:'expense',...base,date:$('#ex-date').value||today(),at:Date.now(),by:S.me||null}));
+    if(ok){privWrite('expenses',EX.id,null);closeSheet();toast('Jetzt als geteilte Ausgabe gespeichert')}return}
   const orig=S.expenses.find(x=>x.id===EX.id);
   const doc={kind:'expense',...base,date:$('#ex-date').value||today(),...(orig?.recId?{recId:orig.recId}:{})};
   const col=S.db.collection('expenses');
   const ok=await save(()=>EX.id?col.doc(EX.id).set({...doc,at:orig?.at||Date.now(),by:S.me||null}):col.add({...doc,at:Date.now(),by:S.me||null}));
   if(ok){closeSheet();toast(EX.id?'Ausgabe gespeichert':'Ausgabe eingetragen')}
+}
+
+async function savePrivExpense(title){
+  const cents=parseEur($('#ex-amount').value);if(!(cents>0)){toast('Gib einen Betrag größer als 0 ein.');return}
+  const base={title:title.slice(0,120),cents,category:$('#ex-cat').value};
+  const coll=EX.rec?'recurring':'expenses';
+  const old=EX.origPriv?(EX.rec?S.privRec:S.priv).find(x=>x.id===EX.id):null;
+  let doc;
+  if(EX.rec){const prevRec=old||(EX.id?S.recurring.find(x=>x.id===EX.id):null);
+    doc={...base,every:+$('#ex-every').value,day:+$('#ex-day').value,start:prevRec?.bookedThrough?prevRec.start:($('#ex-start').value||today().slice(0,7)),active:$('#ex-active').checked,bookedThrough:prevRec?.bookedThrough||null,at:prevRec?.at||Date.now()}}
+  else doc={...base,date:$('#ex-date').value||today(),...(old?.recId?{recId:old.recId}:{}),...(old?.note?{note:old.note}:{}),at:old?.at||Date.now()};
+  await privWrite(coll,EX.origPriv?EX.id:null,doc);
+  if(EX.id&&EX.origPriv===false)await save(()=>S.db.doc(coll+'/'+EX.id).delete());
+  closeSheet();toast(EX.rec?(EX.id?'Dauerauftrag gespeichert':'Privater Dauerauftrag angelegt'):(EX.id?'Gespeichert':'Private Ausgabe eingetragen'));
+}
+async function deleteExpenseSheet(){
+  const coll=EX.rec?'recurring':'expenses';
+  if(EX.origPriv)await privWrite(coll,EX.id,null);
+  else if(!await save(()=>S.db.doc(coll+'/'+EX.id).delete()))return;
+  closeSheet();toast(EX.rec?'Dauerauftrag gelöscht. Bereits eingetragene Monate bleiben erhalten.':'Ausgabe gelöscht');
+}
+
+/* Private recurring entries: same idea as the shared ones, booked into users/{uid}/expenses */
+const pbooking=new Set();
+async function bookPrivRecurring(){
+  if(!S.uid||!S.privReady||!S.privRecReady||S.privErr||S.privRecErr)return;
+  const t=today(),have=new Set(S.priv.map(e=>e.id));
+  for(const r of S.privRec){
+    if(r.active===false||pbooking.has(r.id)||!r.start)continue;
+    let ym=r.bookedThrough?ymAdd(r.bookedThrough,r.every||1):r.start;const due=[];
+    while(recDate(r,ym)<=t&&due.length<36){due.push(ym);ym=ymAdd(ym,r.every||1)}
+    if(!due.length)continue;
+    pbooking.add(r.id);
+    try{
+      for(const m of due){const id='rec-'+r.id+'-'+m;if(have.has(id))continue;
+        await setDoc(doc(collection(fs,'users',S.uid,'expenses'),id),{title:r.title,cents:r.cents,date:recDate(r,m),category:r.category,recId:r.id,at:Date.now()})}
+      await updateDoc(doc(collection(fs,'users',S.uid,'recurring'),r.id),{bookedThrough:due[due.length-1]});
+    }catch(e){}
+    finally{pbooking.delete(r.id)}
+  }
 }
 
 /* Recurring: book every due month once. Booked expenses get a fixed id per month,
@@ -521,9 +601,9 @@ async function bookRecurring(){
 
 /* Receipt scan: photo -> Claude reads the lines -> review & correct -> one expense with item breakdown */
 let RC=null;
-function receiptSheet(e){
+function receiptSheet(e,priv){
   const ms=members();
-  RC={id:e?.id||null,ctl:null,busy:false,error:'',
+  RC={id:e?.id||null,ctl:null,busy:false,error:'',origPriv:e?!!priv:null,priv:e?!!priv:(priv??lastScopePriv()),
     store:e?.title||'',date:e?.date||today(),payer:e?.payer||defaultPayer(),bonTotal:e?.bonTotal??null,
     items:(e?.items||[]).map(x=>({...x})),parts:e?.raw?.parts||Object.fromEntries(ms.map(m=>[m.id,true]))};
   openSheet('',()=>rcRender());
@@ -544,25 +624,26 @@ function rcRender(){
     return;
   }
   root.innerHTML=`${head}
+  ${scopeSeg('rc-scope',RC.priv)}
   <div class="grid2">
     <div class="field"><label for="rc-store">Geschäft</label><input class="inp" id="rc-store" value="${esc(RC.store)}" placeholder="z. B. Rewe"></div>
     <div class="field"><label for="rc-date">Datum</label><input class="inp" type="date" id="rc-date" value="${esc(RC.date)}"></div>
-    <div class="field"><label for="rc-payer">Bezahlt von</label><select class="inp" id="rc-payer">${payerOpts(RC.payer)}</select></div>
-    <div class="field"><span class="lbl">Geteilt zwischen</span><div style="display:flex;gap:12px;flex-wrap:wrap;min-height:42px;align-items:center">${ms.map(m=>`<label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="rc-part-${m.id}" ${RC.parts[m.id]!==false?'checked':''} style="width:18px;height:18px;accent-color:var(--accent)">${esc(m.name)}</label>`).join('')}</div></div>
+    <div class="field shared-only"><label for="rc-payer">Bezahlt von</label><select class="inp" id="rc-payer">${payerOpts(RC.payer)}</select></div>
+    <div class="field shared-only"><span class="lbl">Geteilt zwischen</span><div style="display:flex;gap:12px;flex-wrap:wrap;min-height:42px;align-items:center">${ms.map(m=>`<label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="rc-part-${m.id}" ${RC.parts[m.id]!==false?'checked':''} style="width:18px;height:18px;accent-color:var(--accent)">${esc(m.name)}</label>`).join('')}</div></div>
   </div>
   <div class="sec-h" style="margin:0"><h2 style="font-size:17px">Positionen <span class="mut num" style="font-size:14px">(${RC.items.length})</span></h2><button class="btn ghost sm" data-act="rc-add">Position hinzufügen</button></div>
-  <p class="hint" style="margin:0">Pfand-Rückgabe und Rabatte stehen mit Minus. Bei „Für“ kannst du einzelne Artikel einer Person allein zuordnen.</p>
+  <p class="hint" style="margin:0">Pfand-Rückgabe und Rabatte stehen mit Minus.<span class="shared-only"> Bei „Für“ kannst du einzelne Artikel einer Person allein zuordnen.</span></p>
   <div class="card" style="padding:0 12px">${RC.items.map((it,i)=>`<div class="rc-item">
       <input class="inp" id="rc-n-${i}" value="${esc(it.name)}" aria-label="Artikel">
       <input class="inp num price" id="rc-p-${i}" inputmode="decimal" value="${centsToInput(it.cents)}" aria-label="Preis in €">
       <button class="iconbtn" data-act="rc-rm" data-i="${i}" aria-label="Position entfernen">${ICON_X}</button>
       <div class="sub2">${catSelect('rc-c-'+i,CATS.includes(it.category)?it.category:'Sonstiges')}
-        <select class="inp" id="rc-f-${i}" aria-label="Für wen"><option value="all">Für: alle</option>${ms.map(m=>`<option value="${m.id}" ${it.for===m.id?'selected':''}>Für: nur ${esc(m.name)}</option>`).join('')}</select></div>
+        <select class="inp shared-only" id="rc-f-${i}" aria-label="Für wen"><option value="all">Für: alle</option>${ms.map(m=>`<option value="${m.id}" ${it.for===m.id?'selected':''}>Für: nur ${esc(m.name)}</option>`).join('')}</select></div>
     </div>`).join('')||'<div class="empty"><span>Noch keine Positionen.</span></div>'}</div>
   <div class="rc-sum" id="rc-sum"></div>
   <div class="foot">${RC.id?`<button class="btn danger" data-act="rc-del">Löschen</button>`:''}<div class="right"><button class="btn ghost" data-act="close">Abbrechen</button><button class="btn primary w" data-act="rc-save">Als Ausgabe speichern</button></div></div>`;
-  root.oninput=root.onchange=ev=>{if(ev.target.id?.startsWith('rc-'))rcSync()};
-  rcSync();
+  root.oninput=root.onchange=ev=>{if(ev.target.name==='rc-scope'){RC.priv=ev.target.value==='priv';setScope(RC.priv);rcSync();return}if(ev.target.id?.startsWith('rc-'))rcSync()};
+  setScope(RC.priv);rcSync();
 }
 function rcSync(){
   // read the form back into RC and refresh the summary
@@ -576,8 +657,8 @@ function rcSync(){
   el.innerHTML=`<div class="ln"><span>Summe der Positionen</span><b class="num">${eur(sum)}</b></div>
     ${RC.bonTotal!=null&&RC.bonTotal!==sum?`<div class="ln ${Math.abs(RC.bonTotal-sum)>0?'neg':''}"><span>Summe laut Bon</span><span class="num">${eur(RC.bonTotal)} · Differenz ${eur(RC.bonTotal-sum)}</span></div>`:''}
     <div class="ln mut"><span>${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`${esc(c)} ${eur(v)}`).join(' · ')}</span></div>
-    <div class="ln ${r.err?'neg':''}"><span>${r.err?esc(r.err):Object.entries(r.shares).map(([k,v])=>`${esc(mName(k))} trägt ${eur(v)}`).join(' · ')}</span></div>
-    ${RC.payer===JOINT&&!r.err?`<div class="ln mut"><span>${(()=>{const fake={payer:JOINT,cents:sum,shares:r.shares};const n=Object.fromEntries(paidBy(fake));const owe=members().map(m=>[m,(r.shares[m.id]||0)-(n[m.id]||0)]).filter(([,v])=>v>0);
+    ${RC.priv?'':`<div class="ln ${r.err?'neg':''}"><span>${r.err?esc(r.err):Object.entries(r.shares).map(([k,v])=>`${esc(mName(k))} trägt ${eur(v)}`).join(' · ')}</span></div>`}
+    ${RC.payer===JOINT&&!r.err&&!RC.priv?`<div class="ln mut"><span>${(()=>{const fake={payer:JOINT,cents:sum,shares:r.shares};const n=Object.fromEntries(paidBy(fake));const owe=members().map(m=>[m,(r.shares[m.id]||0)-(n[m.id]||0)]).filter(([,v])=>v>0);
       return owe.length?'Vom Gemeinschaftskonto bezahlt. Für Artikel nur für eine Person entsteht ein Ausgleich: '+owe.map(([m,v])=>`${esc(m.name)} schuldet ${eur(v)}`).join(', ')+'.':'Vom Gemeinschaftskonto bezahlt. Niemand schuldet dafür jemandem etwas.'})()}</span></div>`:''}`;
 }
 function rcShares(){
@@ -634,17 +715,26 @@ async function rcSave(){
   rcSync();
   const items=RC.items.filter(it=>it.name.trim()||it.cents);
   if(!items.length){toast('Füge mindestens eine Position hinzu.');return}
-  const r=rcShares();if(r.err){toast(r.err);return}
-  if(!RC.id)lsSet('hh-lastpayer',RC.payer);
+  const r=RC.priv?{shares:{}}:rcShares();if(r.err){toast(r.err);return}
+  if(!RC.id){lsSet('hh-scope',RC.priv?'priv':'shared');if(!RC.priv)lsSet('hh-lastpayer',RC.payer)}
   const cents=items.reduce((s,it)=>s+it.cents,0);if(!(cents>0)){toast('Die Summe muss größer als 0 sein.');return}
   const byCat={};items.forEach(it=>byCat[it.category]=(byCat[it.category]||0)+it.cents);
   const main=Object.entries(byCat).sort((a,b)=>b[1]-a[1])[0][0];
+  const msg=`Bon gespeichert: ${eur(cents)} in ${Object.keys(byCat).length} ${Object.keys(byCat).length===1?'Kategorie':'Kategorien'}`;
+  if(RC.priv){
+    const old=RC.origPriv?S.priv.find(x=>x.id===RC.id):null;
+    const pdoc={title:RC.store.trim()||'Einkauf',cents,date:RC.date||today(),category:main,items:items.map(it=>({name:it.name.trim()||'Artikel',cents:it.cents,category:it.category})),bonTotal:RC.bonTotal,at:old?.at||Date.now()};
+    await privWrite('expenses',RC.origPriv?RC.id:null,pdoc);
+    if(RC.id&&RC.origPriv===false)await save(()=>S.db.doc('expenses/'+RC.id).delete());
+    closeSheet();RC=null;toast(msg);return;
+  }
+  if(RC.id&&RC.origPriv){const id=RC.id;RC.id=null;RC.origPriv=null;privWrite('expenses',id,null)}
   const orig=S.expenses.find(x=>x.id===RC.id);
   const doc={kind:'expense',title:RC.store.trim()||'Einkauf',cents,payer:RC.payer,date:RC.date||today(),category:main,mode:'items',shares:r.shares,
     raw:{parts:RC.parts},items:items.map(it=>({name:it.name.trim()||'Artikel',cents:it.cents,category:it.category,for:it.for||'all'})),bonTotal:RC.bonTotal,at:orig?.at||Date.now(),by:S.me||null};
   const col=S.db.collection('expenses');
   const ok=await save(()=>RC.id?col.doc(RC.id).set(doc):col.add(doc));
-  if(ok){closeSheet();RC=null;toast(`Bon gespeichert: ${eur(cents)} in ${Object.keys(byCat).length} ${Object.keys(byCat).length===1?'Kategorie':'Kategorien'}`)}
+  if(ok){closeSheet();RC=null;toast(msg)}
 }
 
 /* Settle */
@@ -784,20 +874,19 @@ function confirmTwice(btn,label){if(armed.get(btn)){armed.delete(btn);return tru
 document.addEventListener('click',async ev=>{
   const tab=ev.target.closest('[data-tab]');if(tab){location.hash=tab.dataset.tab;show(tab.dataset.tab);return}
   const sb=ev.target.closest('[data-sub]');if(sb){S.expSub=sb.dataset.sub;lsSet('hh-sub',S.expSub);renderSub();return}
+  const mb=ev.target.closest('[data-mine]');if(mb){S.mineFilter=mb.dataset.mine;lsSet('hh-minef',S.mineFilter);renderMine();return}
   const pb=ev.target.closest('[data-pin]');if(pb){S.pinSub=pb.dataset.pin;lsSet('hh-pin',S.pinSub);renderPin();return}
   const b=ev.target.closest('[data-act]');if(!b)return;const a=b.dataset.act,id=b.dataset.id;
   switch(a){
     case 'rep-prev':S.repMonth=ymAdd(S.repMonth||today().slice(0,7),-1);renderReport();break;
     case 'rep-next':{const n=ymAdd(S.repMonth||today().slice(0,7),1);if(n<=today().slice(0,7)){S.repMonth=n;renderReport()}break}
-    case 'priv-new':privSheet(null);break;
-    case 'priv-edit':{const e=S.priv.find(x=>x.id===id);if(e)privSheet(e);break}
-    case 'priv-save':savePriv(id);break;
-    case 'priv-del':if(confirmTwice(b)&&await privWrite(id,null)){closeSheet();toast('Gelöscht')}break;
-    case 'priv-prev':S.privMonth=ymAdd(S.privMonth||today().slice(0,7),-1);renderPriv();break;
-    case 'priv-next':{const n=ymAdd(S.privMonth||today().slice(0,7),1);if(n<=today().slice(0,7)){S.privMonth=n;renderPriv()}break}
+    case 'mine-new':expenseSheet(null,null,false,S.mineFilter==='priv'?true:S.mineFilter==='shared'?false:undefined);break;
+    case 'mine-scan':receiptSheet(null,S.mineFilter==='priv'?true:S.mineFilter==='shared'?false:undefined);break;
+    case 'mine-edit':{const e=S.priv.find(x=>x.id===id);if(!e)break;if(e.items?.length)receiptSheet(e,true);else expenseSheet(e,null,false,true);break}
+    case 'mine-prev':S.mineMonth=ymAdd(S.mineMonth||today().slice(0,7),-1);renderMine();break;
+    case 'mine-next':{const n=ymAdd(S.mineMonth||today().slice(0,7),1);if(n<=today().slice(0,7)){S.mineMonth=n;renderMine()}break}
     case 'rec-new':expenseSheet(null,null,true);break;
-    case 'rec-edit':expenseSheet(S.recurring.find(x=>x.id===id),null,true);break;
-    case 'rec-del':if(confirmTwice(b)&&await save(()=>S.db.doc('recurring/'+EX.id).delete())){closeSheet();toast('Dauerauftrag gelöscht. Bereits eingetragene Monate bleiben erhalten.')}break;
+    case 'rec-edit':{const p=!!b.dataset.priv;const r=(p?S.privRec:S.recurring).find(x=>x.id===id);if(r)expenseSheet(r,null,true,p);break}
     case 'close':closeSheet();break;
     case 'settings':settingsSheet();break;
     case 'iam':iAm(id);break;
@@ -826,9 +915,9 @@ document.addEventListener('click',async ev=>{
     case 'rc-add':rcSync();RC.items.push({name:'',cents:0,category:RC.items.at(-1)?.category||'Lebensmittel',for:'all'});rcRender();$('#rc-n-'+(RC.items.length-1))?.focus();break;
     case 'rc-rm':rcSync();RC.items.splice(+b.dataset.i,1);rcRender();break;
     case 'rc-save':rcSave();break;
-    case 'rc-del':if(confirmTwice(b)&&await save(()=>S.db.doc('expenses/'+RC.id).delete())){closeSheet();toast('Bon gelöscht')}break;
+    case 'rc-del':if(!confirmTwice(b))break;if(RC.origPriv){await privWrite('expenses',RC.id,null);closeSheet();toast('Bon gelöscht')}else if(await save(()=>S.db.doc('expenses/'+RC.id).delete())){closeSheet();toast('Bon gelöscht')}break;
     case 'ex-save':saveExpense();break;
-    case 'ex-del':if(confirmTwice(b)&&await save(()=>S.db.doc('expenses/'+EX.id).delete())){closeSheet();toast('Ausgabe gelöscht')}break;
+    case 'ex-del':if(confirmTwice(b))deleteExpenseSheet();break;
     case 'settle':settleSheet(null,{from:b.dataset.from,to:b.dataset.to,c:+b.dataset.c});break;
     case 'settle-new':settleSheet(null);break;
     case 'settle-edit':settleSheet(S.expenses.find(x=>x.id===id));break;
@@ -891,22 +980,25 @@ function makeDb(hid){
 
 function stopHousehold(){
   unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];
-  Object.assign(S,{db:null,meta:null,metaReady:false,shopping:[],expenses:[],chores:[],notes:[],recurring:[],ready:{},slow:false,fail:null,priv:[],privReady:false,privErr:null});
+  Object.assign(S,{db:null,meta:null,metaReady:false,shopping:[],expenses:[],chores:[],notes:[],recurring:[],ready:{},slow:false,fail:null,priv:[],privReady:false,privErr:null,privRec:[],privRecReady:false,privRecErr:null});
 }
-/* Private expenses live outside the household: users/{uid}/expenses */
+/* Private entries live outside the household: users/{uid}/expenses and users/{uid}/recurring */
 function startPrivate(){
   if(!S.uid)return;
-  const col=collection(fs,'users',S.uid,'expenses');
-  unsubs.push(onSnapshot(col,{includeMetadataChanges:true},
-    s=>{S.priv=s.docs.map(d=>({id:d.id,...d.data()}));S.privReady=true;S.privErr=null;if(S.expSub==='priv')renderPriv()},
-    e=>{S.privErr=e?.code||'error';S.privReady=true;if(S.expSub==='priv')renderPriv()}));
+  const refresh=()=>{if(S.expSub==='mine')renderMine();if(S.expSub==='rec')renderRec()};
+  unsubs.push(onSnapshot(collection(fs,'users',S.uid,'expenses'),{includeMetadataChanges:true},
+    s=>{S.priv=s.docs.map(d=>({id:d.id,...d.data()}));S.privReady=true;S.privErr=null;refresh();if(!s.metadata.fromCache)bookPrivRecurring()},
+    e=>{S.privErr=e?.code||'error';S.privReady=true;refresh()}));
+  unsubs.push(onSnapshot(collection(fs,'users',S.uid,'recurring'),{includeMetadataChanges:true},
+    s=>{S.privRec=s.docs.map(d=>({id:d.id,...d.data()}));S.privRecReady=true;S.privRecErr=null;refresh();if(!s.metadata.fromCache)bookPrivRecurring()},
+    e=>{S.privRecErr=e?.code||'error';S.privRecReady=true;refresh()}));
 }
-function privWrite(id,data){
+function privWrite(coll,id,data){
   if(!S.uid)return Promise.resolve(false);
-  const col=collection(fs,'users',S.uid,'expenses');
+  const col=collection(fs,'users',S.uid,coll);
   const r=id?doc(col,id):doc(col);
   const p=data?setDoc(r,data):deleteDoc(r);
-  p.catch(e=>{if(e?.code==='permission-denied'){S.privErr='permission-denied';renderPriv()}failWrite(e)});
+  p.catch(e=>{if(e?.code==='permission-denied'){if(coll==='recurring')S.privRecErr='permission-denied';else S.privErr='permission-denied';render()}failWrite(e)});
   return Promise.resolve(true);
 }
 function startHousehold(hid){
@@ -1071,7 +1163,7 @@ function boot(){
     findHousehold();
   });
   if(!bookTimer)bookTimer=setInterval(()=>{if(document.visibilityState==='visible')bookRecurring()},3600e3);
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){render();bookRecurring()}});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){render();bookRecurring();bookPrivRecurring()}});
 }
 boot();
 })();

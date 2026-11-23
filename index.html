@@ -210,6 +210,11 @@ textarea.inp{resize:vertical;min-height:110px}
 .subtabs .lock{width:13px;height:13px;flex-shrink:0}
 .priv-badge{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
 .priv-badge svg{width:15px;height:15px;flex-shrink:0}
+.lock-i{display:inline-flex;width:13px;height:13px;margin-right:4px;vertical-align:-2px}
+.lock-i svg{width:100%;height:100%}
+.seg.scope label{display:flex;align-items:center;justify-content:center}
+#sheet.is-priv .shared-only{display:none!important}
+#sheet:not(.is-priv) .priv-only{display:none!important}
 .subtabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
 
 /* Gemeinschaftskonto */
@@ -369,7 +374,7 @@ body.ro .w{display:none!important}
       <button role="tab" data-sub="list">Übersicht</button>
       <button role="tab" data-sub="report">Bericht</button>
       <button role="tab" data-sub="rec">Daueraufträge</button>
-      <button role="tab" data-sub="priv"><svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Privat</button>
+      <button role="tab" data-sub="mine">Meine</button>
     </div>
     <div id="sub-list" class="view" style="padding:0">
       <div id="bal"></div>
@@ -382,10 +387,10 @@ body.ro .w{display:none!important}
       <div id="exp-list"></div>
     </div>
     <div id="sub-report" class="view" style="padding:0" hidden></div>
-    <div id="sub-priv" class="view" style="padding:0" hidden></div>
+    <div id="sub-mine" class="view" style="padding:0" hidden></div>
     <div id="sub-rec" class="view" style="padding:0" hidden>
       <div class="sec-h"><h2>Daueraufträge</h2><button class="btn primary sm w" data-act="rec-new">Dauerauftrag anlegen</button></div>
-      <p class="hint" style="margin:0">Feste Zahlungen wie Miete oder Strom werden an ihrem Tag automatisch als Ausgabe eingetragen und wie gewohnt aufgeteilt.</p>
+      <p class="hint" style="margin:0">Feste Zahlungen wie Miete oder Strom werden an ihrem Tag automatisch als Ausgabe eingetragen. Mit „Nur für mich“ legst du eigene Verträge an, die nur du siehst.</p>
       <div id="rec-list"></div>
     </div>
   </section>
